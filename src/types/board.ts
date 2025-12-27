@@ -19,8 +19,9 @@ export interface CardData {
   width: number;
   height: number;
   rotation: number;
-  content: {
+  content: {    
     frontUrl?: string;
+    frontVideoUrl?: string; // New: Video URL
     frontText?: string;
     backReflection: {
       identity: string;

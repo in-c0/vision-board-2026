@@ -63,12 +63,15 @@ export default function Board() {
     setSelectedId(newCard.id); // Auto-select new card
   };
 
+  // FIX: Use functional updates to ensure we never overwrite the latest state
   const updateCard = (id: string, newData: Partial<CardData>) => {
-    setCards(cards.map((c) => (c.id === id ? { ...c, ...newData } : c)));
+    setCards((prevCards) => 
+      prevCards.map((c) => (c.id === id ? { ...c, ...newData } : c))
+    );
   };
   const deleteCard = (id: string) => {
-      setCards(cards.filter(c => c.id !== id));
-    };
+    setCards((prevCards) => prevCards.filter(c => c.id !== id));
+  };
 
     
   return (

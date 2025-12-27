@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { CardData } from "@/types/board";
-import { RefreshCw, RotateCw, Maximize2, Trash2, Type, Image as ImageIcon, MoreHorizontal, X } from "lucide-react";
+import { RefreshCw, RotateCw, Maximize2, Trash2, Type, Image as ImageIcon, MoreHorizontal, X, Video } from "lucide-react";
 
 interface VisionCardProps {
   card: CardData;
@@ -31,7 +31,6 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
   // --- EVENT HELPERS ---
   const toggleTextSelection = (allow: boolean) => {
     document.body.style.userSelect = allow ? 'auto' : 'none';
-    document.body.style.cursor = allow ? 'auto' : 'grabbing';
   };
 
   const rotatePoint = (x: number, y: number, radians: number) => {
@@ -78,6 +77,42 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
     });
   };
 
+  const handlePasteLink = async () => {
+      const url = prompt("Paste Pinterest or Image Link:");
+      if (!url) return;
+
+      // Optimistic UI
+      updateCard(card.id, { content: { ...card.content, frontText: "Fetching..." } });
+      setShowMenu(false);
+
+      try {
+        const res = await fetch('/api/unfurl', {
+          method: 'POST',
+          body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+
+        if (data.url || data.videoUrl) {
+          updateCard(card.id, { 
+            type: 'image',
+            content: { 
+              ...card.content, 
+              frontUrl: data.url,
+              frontVideoUrl: data.videoUrl,
+              frontText: "" 
+            } 
+          });
+        } else {
+          alert("Could not find media.");
+          // Revert text
+          updateCard(card.id, { content: { ...card.content, frontText: "Empty" } });
+        }
+      } catch (e) {
+        console.error(e);
+        alert("Failed to fetch.");
+      }
+  };
+
   // --- DRAG / ROTATE / RESIZE LOGIC (Kept exactly as fixed previously) ---
   const handleDragStart = (e: React.PointerEvent) => {
     e.preventDefault();
@@ -107,6 +142,14 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
 
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+  };
+
+  // --- INPUT FOCUS FIX ---
+  // Ensures clicks inside textareas don't start a drag; allows typing immediately.
+  const handleInputStopPropagation = (e: React.PointerEvent | React.MouseEvent) => {
+    e.stopPropagation();
+    // Keep the card selected so it appears above others
+    onSelect(e as unknown as React.PointerEvent);
   };
 
   // (Rotate and Resize handlers omitted for brevity - assume they are same as previous step)
@@ -204,19 +247,27 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
         >
           {/* --- FRONT --- */}
           <div className="absolute inset-0 backface-hidden w-full h-full bg-stone-50 rounded-2xl shadow-xl overflow-hidden border border-stone-200 flex flex-col select-none">
-            {/* Image Layer */}
-            {card.content.frontUrl && (
+            {/* VIDEO / IMAGE LAYER */}
+            {card.content.frontVideoUrl ? (
+                <video 
+                    src={card.content.frontVideoUrl}
+                    poster={card.content.frontUrl}
+                    autoPlay loop muted playsInline
+                    className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+                    style={{ opacity: style.opacity }}
+                />
+            ) : card.content.frontUrl ? (
               <img 
                 src={card.content.frontUrl} 
                 alt="Vision" 
                 className="absolute inset-0 w-full h-full object-cover pointer-events-none" 
                 style={{ opacity: style.opacity }}
               />
-            )}
+            ) : null}
             
             {/* Text Layer (Visible even on images for captioning) */}
             <div className="relative w-full h-full flex items-center justify-center p-6 z-10">
-                {(card.type === 'text' || !card.content.frontUrl) && (
+                 {(card.type === 'text' || (!card.content.frontUrl && !card.content.frontVideoUrl)) && (
                      <span 
                         className="text-center outline-none"
                         style={{ 
@@ -243,8 +294,9 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
                   <label className="text-xs font-semibold uppercase tracking-wider text-stone-400 select-none">Identity</label>
                   <textarea
                     placeholder="In 2026, I am becoming..."
-                    className="w-full bg-stone-50 p-3 rounded-lg text-sm text-stone-700 resize-none focus:outline-none focus:ring-1 focus:ring-stone-300 placeholder:text-stone-300 min-h-[80px]"
-                    onPointerDown={(e) => { e.stopPropagation(); onSelect(e); }} 
+                    className="w-full bg-stone-50 p-3 rounded-lg text-sm text-stone-700 resize-none focus:outline-none focus:ring-1 focus:ring-stone-300 placeholder:text-stone-300 min-h-[80px] cursor-text select-text"
+                    onPointerDown={handleInputStopPropagation}
+                    onKeyDown={(e) => e.stopPropagation()}
                     onChange={(e) => updateCard(card.id, { content: { ...card.content, backReflection: { ...card.content.backReflection, identity: e.target.value }} })}
                     defaultValue={card.content.backReflection.identity}
                   />
@@ -253,8 +305,9 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
                    <label className="text-xs font-semibold uppercase tracking-wider text-stone-400 select-none">Practice</label>
                   <textarea
                     placeholder="I will support this by..."
-                    className="w-full bg-stone-50 p-3 rounded-lg text-sm text-stone-700 resize-none focus:outline-none focus:ring-1 focus:ring-stone-300 placeholder:text-stone-300 min-h-[80px]"
-                    onPointerDown={(e) => { e.stopPropagation(); onSelect(e); }} 
+                    className="w-full bg-stone-50 p-3 rounded-lg text-sm text-stone-700 resize-none focus:outline-none focus:ring-1 focus:ring-stone-300 placeholder:text-stone-300 min-h-[80px] cursor-text select-text"
+                    onPointerDown={handleInputStopPropagation}
+                    onKeyDown={(e) => e.stopPropagation()}
                     onChange={(e) => updateCard(card.id, { content: { ...card.content, backReflection: { ...card.content.backReflection, practice: e.target.value }} })}
                     defaultValue={card.content.backReflection.practice}
                   />
@@ -295,6 +348,14 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
                     </button>
                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload}/>
                 </div>
+
+                {/* Image / Video Paste Link */}
+                <button 
+                  onClick={handlePasteLink}
+                  className="flex items-center gap-2 text-xs bg-stone-100 hover:bg-stone-200 px-2 py-2 rounded text-stone-600 transition-colors justify-center"
+                >
+                  <Video size={14} /> Paste Link (Image/Video)
+                </button>
 
                 {/* Opacity */}
                 <div className="flex flex-col gap-1">

@@ -9,8 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@types/jsdom": "^27.0.0",
     "clsx": "^2.1.1",
     "framer-motion": "^12.23.26",
+    "jsdom": "^27.4.0",
     "lucide-react": "^0.562.0",
     "next": "16.1.1",
     "react": "19.2.3",

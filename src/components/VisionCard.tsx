@@ -1,13 +1,48 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { motion, useDragControls } from "framer-motion"; // <--- Imported useDragControls
+import { motion, useDragControls } from "framer-motion";
 import { CardData } from "@/types/board";
 import { 
     RefreshCw, RotateCw, Maximize2, Trash2, 
     Image as ImageIcon, X, Video, Film, Loader2, 
-    Link as LinkIcon, GripHorizontal, Type, Upload
+    Link as LinkIcon, GripHorizontal, Type, Upload, Palette,
+    LayoutTemplate, Lock
 } from "lucide-react";
+
+// --- TEMPLATE CONFIGURATION ---
+const TEMPLATES = {
+  default: {
+    label: "Identity",
+    quote: "The world will ask who you are, and if you do not know, the world will tell you.",
+    q1: "What this represents",
+    q2: "Why this matters",
+    q3: "How I'll support this"
+  },
+  environment: {
+    label: "Environment",
+    quote: "You don't rise to the level of your goals. You fall to the level of your systems.",
+    q1: "This thrives when...",
+    q2: "I'll remove friction by...",
+    q3: "I'll add support by..."
+  },
+  community: {
+    label: "Community",
+    quote: "You are the average of the five people you spend the most time with.",
+    q1: "I'm surrounded by people who...",
+    q2: "The version of me here is...",
+    q3: "I contribute by..."
+  },
+  habit: {
+    label: "Habit",
+    quote: "We become what we repeatedly do.",
+    q1: "The habit",
+    q2: "When / Where",
+    q3: "Why it matters"
+  }
+};
+
+type TemplateId = keyof typeof TEMPLATES;
 
 interface VisionCardProps {
   card: CardData;
@@ -21,9 +56,10 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
   const isInteracting = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null); 
   const [showMenu, setShowMenu] = useState(false);
-  const dragControls = useDragControls(); // <--- Initialize Drag Controls
+  const dragControls = useDragControls();
   
   // Menu Workflow States
+  const [menuTab, setMenuTab] = useState<'visuals' | 'backside'>('visuals');
   const [menuMode, setMenuMode] = useState<'main' | 'input' | 'loading' | 'choice'>('main');
   const [urlInput, setUrlInput] = useState("");
   const [pendingMedia, setPendingMedia] = useState<{ img?: string, video?: string } | null>(null);
@@ -34,24 +70,31 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
     fontWeight: 'normal', fontStyle: 'italic', textColor: '#292524'
   };
 
+  // Safe Data Access for Backside
+  const backData = {
+      templateId: (card.content.backReflection as any)?.templateId || 'default',
+      q1: (card.content.backReflection as any)?.q1 || card.content.backReflection?.identity || "",
+      q2: (card.content.backReflection as any)?.q2 || card.content.backReflection?.practice || "",
+      q3: (card.content.backReflection as any)?.q3 || ""
+  };
+
+  const currentTemplate = TEMPLATES[backData.templateId as TemplateId] || TEMPLATES.default;
+
   // --- 1. LOCAL UPLOAD LOGIC ---
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
         const objectUrl = URL.createObjectURL(file);
         updateCard(card.id, { 
+            isFlipped: false, // Force Front
             type: 'image',
-            content: { 
-                ...card.content, 
-                frontUrl: objectUrl, 
-                frontVideoUrl: undefined,
-            } 
+            content: { ...card.content, frontUrl: objectUrl, frontVideoUrl: undefined } 
         });
         e.target.value = '';
     }
   };
 
-  // --- 2. ROBUST DRAG HANDLER (CARD) ---
+  // --- 2. ROBUST DRAG HANDLER ---
   const handleDragStart = (e: React.PointerEvent) => {
     const target = e.target as HTMLElement;
     if (target.closest('.stop-drag')) return;
@@ -85,51 +128,63 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
   const handleFetch = async () => {
     if (!urlInput) return;
     setMenuMode('loading');
-
     try {
-        const res = await fetch('/api/unfurl', {
-            method: 'POST',
-            body: JSON.stringify({ url: urlInput })
-        });
+        const res = await fetch('/api/unfurl', { method: 'POST', body: JSON.stringify({ url: urlInput }) });
         const data = await res.json();
-
         if (data.url && data.videoUrl) {
             setPendingMedia({ img: data.url, video: data.videoUrl });
             setMenuMode('choice');
             return;
         }
-        if (data.videoUrl) {
-            applyMedia(data.url, data.videoUrl);
-            return;
-        }
-        if (data.url) {
-            applyMedia(data.url, null);
-            return;
-        }
-        alert("No media found.");
-        setMenuMode('input');
+        if (data.videoUrl) { applyMedia(data.url, data.videoUrl); return; }
+        if (data.url) { applyMedia(data.url, null); return; }
+        alert("No media found."); setMenuMode('input');
     } catch (e) {
-        console.error(e);
-        alert("Failed to fetch.");
-        setMenuMode('input');
+        console.error(e); alert("Failed to fetch."); setMenuMode('input');
     }
   };
 
   const applyMedia = (img: string | null, video: string | null) => {
       updateCard(card.id, { 
+          isFlipped: false, // Force Front
           type: 'image',
-          content: { 
-              ...card.content, 
-              frontUrl: img || card.content.frontUrl, 
-              frontVideoUrl: video || undefined,
-          } 
+          content: { ...card.content, frontUrl: img || card.content.frontUrl, frontVideoUrl: video || undefined } 
       });
-      setShowMenu(false);
-      setMenuMode('main');
-      setUrlInput("");
+      setShowMenu(false); setMenuMode('main'); setUrlInput("");
   };
 
-  // --- 4. ROTATE/RESIZE LOGIC ---
+  // --- 4. TEMPLATE UPDATE LOGIC ---
+  const updateTemplate = (tId: TemplateId) => {
+      updateCard(card.id, {
+          isFlipped: true, // Force Back
+          content: {
+              ...card.content,
+              backReflection: {
+                  ...card.content.backReflection,
+                  // @ts-ignore 
+                  templateId: tId,
+                  q1: backData.q1,
+                  q2: backData.q2,
+                  q3: backData.q3
+              }
+          }
+      });
+  };
+
+  const updateBackField = (field: 'q1'|'q2'|'q3', value: string) => {
+      updateCard(card.id, {
+          content: {
+              ...card.content,
+              backReflection: {
+                  ...card.content.backReflection,
+                  // @ts-ignore
+                  [field]: value
+              }
+          }
+      });
+  };
+
+  // --- 5. ROTATE/RESIZE LOGIC ---
   const rotatePoint = (x: number, y: number, radians: number) => {
     return { x: x * Math.cos(radians) - y * Math.sin(radians), y: x * Math.sin(radians) + y * Math.cos(radians) };
   };
@@ -191,7 +246,6 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
         {isSelected && (
             <>
                 <div className="absolute -inset-3 border-2 border-blue-400/50 rounded-3xl pointer-events-none z-0" />
-                {/* DARK ICONS (text-stone-900) */}
                 <div onPointerDown={handleRotateStart} className="stop-drag absolute -top-14 left-1/2 -translate-x-1/2 w-8 h-8 bg-white border border-stone-300 shadow-md rounded-full flex items-center justify-center cursor-alias z-50 text-stone-900 hover:bg-stone-50">
                     <RotateCw size={14} /> 
                 </div>
@@ -215,8 +269,7 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
         >
           {/* --- FRONT SIDE --- */}
           <div className="absolute inset-0 backface-hidden w-full h-full bg-stone-50 rounded-2xl shadow-xl overflow-hidden border border-stone-200 flex flex-col select-none">
-            
-            {/* LAYER 1: MEDIA (Z-0) */}
+            {/* Media */}
             {card.content.frontVideoUrl ? (
                 <video 
                     src={card.content.frontVideoUrl} poster={card.content.frontUrl}
@@ -231,15 +284,13 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
                 style={{ opacity: style.opacity }}
               />
             ) : null}
-
-            {/* LAYER 2: TEXT (Z-20) */}
+            {/* Text */}
             <div className="relative w-full h-full flex items-center justify-center p-6 z-20 pointer-events-none">
                  <span style={{ 
                         fontSize: `${style.fontSize}px`, 
                         fontFamily: style.fontFamily === 'font-serif' ? 'serif' : style.fontFamily === 'font-mono' ? 'monospace' : 'sans-serif', 
                         color: style.textColor, fontStyle: style.fontStyle, fontWeight: style.fontWeight,
-                        textShadow: '0px 1px 3px rgba(0,0,0,0.15)',
-                        lineHeight: 1.2
+                        textShadow: '0px 1px 3px rgba(0,0,0,0.15)', lineHeight: 1.2
                     }}>
                   {card.content.frontText}
                  </span>
@@ -248,32 +299,50 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
 
           {/* --- BACK SIDE --- */}
           <div 
-            className="absolute inset-0 backface-hidden w-full h-full bg-white rounded-2xl shadow-inner border-2 border-stone-100 p-6 flex flex-col"
+            className="absolute inset-0 backface-hidden w-full h-full bg-white rounded-2xl shadow-inner border-2 border-stone-100 p-5 flex flex-col"
             style={{ transform: "rotateY(180deg)" }}
           >
              <div 
-                className="flex-1 overflow-y-auto flex flex-col gap-4 scrollbar-thin scrollbar-thumb-stone-200 scrollbar-track-transparent pr-1 cursor-text select-text stop-drag"
+                className="flex-1 overflow-y-auto flex flex-col gap-3 scrollbar-thin scrollbar-thumb-stone-200 scrollbar-track-transparent pr-1 cursor-text select-text stop-drag"
                 onPointerDown={(e) => { e.stopPropagation(); }}
              >
-                <div className="flex flex-col gap-1 mt-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-stone-900 select-none">Identity</label>
-                  <textarea
-                    placeholder="In 2026, I am becoming..."
-                    className="w-full bg-stone-50 p-3 rounded-lg text-sm text-stone-900 border border-stone-200 resize-none focus:outline-none focus:ring-2 focus:ring-stone-800 placeholder:text-stone-400 min-h-[80px]"
-                    onChange={(e) => updateCard(card.id, { content: { ...card.content, backReflection: { ...card.content.backReflection, identity: e.target.value }} })}
-                    defaultValue={card.content.backReflection.identity}
-                  />
-                </div>
+                {/* Question 1 */}
                 <div className="flex flex-col gap-1">
-                   <label className="text-xs font-bold uppercase tracking-wider text-stone-900 select-none">Practice</label>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-stone-900 select-none">
+                      {currentTemplate.q1}
+                  </label>
                   <textarea
-                    placeholder="I will support this by..."
-                    className="w-full bg-stone-50 p-3 rounded-lg text-sm text-stone-900 border border-stone-200 resize-none focus:outline-none focus:ring-2 focus:ring-stone-800 placeholder:text-stone-400 min-h-[80px]"
-                    onChange={(e) => updateCard(card.id, { content: { ...card.content, backReflection: { ...card.content.backReflection, practice: e.target.value }} })}
-                    defaultValue={card.content.backReflection.practice}
+                    className="w-full bg-stone-50 p-2 rounded-md text-xs text-stone-900 border border-stone-200 resize-none focus:outline-none focus:ring-1 focus:ring-stone-800 placeholder:text-stone-300 min-h-[40px]"
+                    onChange={(e) => updateBackField('q1', e.target.value)}
+                    value={backData.q1}
                   />
                 </div>
-                 <div className="h-4 shrink-0"></div>
+                
+                {/* Question 2 */}
+                <div className="flex flex-col gap-1">
+                   <label className="text-[10px] font-bold uppercase tracking-wider text-stone-900 select-none">
+                        {currentTemplate.q2}
+                   </label>
+                  <textarea
+                    className="w-full bg-stone-50 p-2 rounded-md text-xs text-stone-900 border border-stone-200 resize-none focus:outline-none focus:ring-1 focus:ring-stone-800 placeholder:text-stone-300 min-h-[40px]"
+                    onChange={(e) => updateBackField('q2', e.target.value)}
+                    value={backData.q2}
+                  />
+                </div>
+
+                {/* Question 3 */}
+                <div className="flex flex-col gap-1">
+                   <label className="text-[10px] font-bold uppercase tracking-wider text-stone-900 select-none">
+                        {currentTemplate.q3}
+                   </label>
+                  <textarea
+                    className="w-full bg-stone-50 p-2 rounded-md text-xs text-stone-900 border border-stone-200 resize-none focus:outline-none focus:ring-1 focus:ring-stone-800 placeholder:text-stone-300 min-h-[40px]"
+                    onChange={(e) => updateBackField('q3', e.target.value)}
+                    value={backData.q3}
+                  />
+                </div>
+
+                <div className="h-4 shrink-0"></div>
             </div>
           </div>
         </motion.div>
@@ -282,175 +351,163 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
     {/* --- THE DRAGGABLE MENU --- */}
     {showMenu && (
         <motion.div 
-            drag
-            dragListener={false} // CRITICAL FIX: Disables dragging on the body
-            dragControls={dragControls} // Enable dragging only via controls
-            dragMomentum={false}
+            drag dragListener={false} dragControls={dragControls} dragMomentum={false}
             onPointerDown={(e) => e.stopPropagation()} 
             className="stop-drag fixed z-[999] bg-white border border-stone-200 shadow-2xl rounded-xl w-72 flex flex-col overflow-hidden"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             style={{ left: card.x + card.width/2 + 20, top: card.y - 100 }}
         >
-             {/* Header - This is the ONLY handle for dragging */}
+             {/* Header */}
              <div 
                 className="flex justify-between items-center px-3 py-2 bg-stone-50 border-b border-stone-200 cursor-move"
-                onPointerDown={(e) => dragControls.start(e)} // Start drag here
+                onPointerDown={(e) => dragControls.start(e)}
              >
                 <div className="flex items-center gap-2 text-stone-500">
                     <GripHorizontal size={14} />
-                    <span className="text-xs font-bold uppercase tracking-wider text-stone-700">
-                        Edit Card
-                    </span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-stone-700">Edit Card</span>
                 </div>
-                <button 
-                    // Stop propagation so clicking X doesn't start drag
-                    onPointerDown={(e) => e.stopPropagation()} 
-                    onClick={() => { setShowMenu(false); setMenuMode('main'); }} 
-                    className="text-stone-400 hover:text-stone-700"
-                >
-                    <X size={16}/>
-                </button>
+                <button onPointerDown={(e) => e.stopPropagation()} onClick={() => { setShowMenu(false); setMenuMode('main'); }} className="text-stone-400 hover:text-stone-700"><X size={16}/></button>
             </div>
 
-            {/* --- MODE: MAIN --- */}
+            {/* TAB SWITCHER */}
             {menuMode === 'main' && (
+                <div className="flex border-b border-stone-100">
+                    <button 
+                        onClick={() => setMenuTab('visuals')}
+                        className={`flex-1 py-2 text-xs font-bold transition-colors ${menuTab === 'visuals' ? 'text-stone-900 border-b-2 border-stone-900 bg-white' : 'text-stone-400 bg-stone-50 hover:bg-stone-100'}`}
+                    >
+                        Visuals
+                    </button>
+                    <button 
+                        onClick={() => setMenuTab('backside')}
+                        className={`flex-1 py-2 text-xs font-bold transition-colors ${menuTab === 'backside' ? 'text-stone-900 border-b-2 border-stone-900 bg-white' : 'text-stone-400 bg-stone-50 hover:bg-stone-100'}`}
+                    >
+                        Backside
+                    </button>
+                </div>
+            )}
+
+            {/* --- TAB: VISUALS (Front) --- */}
+            {menuMode === 'main' && menuTab === 'visuals' && (
                 <div className="px-3 py-3 flex flex-col gap-4 bg-white">
                     {/* Media Actions */}
                     <div className="flex gap-2">
-                        <button 
-                            onClick={() => setMenuMode('input')}
-                            className="flex-1 flex items-center justify-center gap-2 text-xs font-semibold bg-stone-100 text-stone-700 hover:bg-stone-200 px-2 py-2 rounded-lg transition-colors border border-stone-200"
-                        >
+                        <button onClick={() => setMenuMode('input')} className="flex-1 flex items-center justify-center gap-2 text-xs font-semibold bg-stone-100 text-stone-700 hover:bg-stone-200 px-2 py-2 rounded-lg transition-colors border border-stone-200">
                            <LinkIcon size={12} /> Link
                         </button>
-                        <button 
-                            onClick={() => fileInputRef.current?.click()}
-                            className="flex-1 flex items-center justify-center gap-2 text-xs font-semibold bg-stone-100 text-stone-700 hover:bg-stone-200 px-2 py-2 rounded-lg transition-colors border border-stone-200"
-                        >
+                        <button onClick={() => fileInputRef.current?.click()} className="flex-1 flex items-center justify-center gap-2 text-xs font-semibold bg-stone-100 text-stone-700 hover:bg-stone-200 px-2 py-2 rounded-lg transition-colors border border-stone-200">
                            <Upload size={12} /> Upload
                         </button>
-                        <input 
-                            type="file" ref={fileInputRef} className="hidden" 
-                            accept="image/*" onChange={handleFileUpload} 
-                        />
+                        <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
                     </div>
-                    
                     <div className="h-px bg-stone-100 w-full"></div>
-
-                    {/* Text Label */}
                     <div className="flex flex-col gap-1.5">
                         <span className="text-[11px] font-bold text-stone-800 flex items-center gap-1"><Type size={10}/> Label</span>
                         <input 
-                            type="text"
-                            value={card.content.frontText || ""}
-                            onChange={(e) => updateCard(card.id, { content: { ...card.content, frontText: e.target.value }})}
-                            placeholder="Add text overlay..."
+                            type="text" value={card.content.frontText || ""} 
+                            onChange={(e) => updateCard(card.id, { isFlipped: false, content: { ...card.content, frontText: e.target.value }})} 
+                            placeholder="Add text overlay..." 
                             className="text-xs p-2 bg-stone-50 border border-stone-200 rounded focus:border-stone-400 outline-none text-stone-900 font-medium"
                         />
                     </div>
-
-                    {/* Font Settings (Size & Color) */}
                     <div className="flex gap-2">
                          <div className="flex-1 flex flex-col gap-1">
                              <span className="text-[10px] font-bold text-stone-900">Size (px)</span>
-                             <input 
-                                type="number" min="12" max="120"
-                                value={style.fontSize}
-                                onChange={(e) => updateCard(card.id, { content: { ...card.content, style: { ...style, fontSize: parseInt(e.target.value) } } })}
-                                className="w-full text-xs p-1.5 bg-stone-50 border border-stone-200 rounded font-medium text-stone-900"
-                             />
+                             <input type="number" min="12" max="120" value={style.fontSize} onChange={(e) => updateCard(card.id, { isFlipped: false, content: { ...card.content, style: { ...style, fontSize: parseInt(e.target.value) } } })} className="w-full text-xs p-1.5 bg-stone-50 border border-stone-200 rounded font-medium text-stone-900" />
                          </div>
                          <div className="flex-1 flex flex-col gap-1">
                              <span className="text-[10px] font-bold text-stone-900">Color</span>
-                             <div className="flex items-center gap-2">
-                                 {/* Color Preview / Trigger */}
-                                 <div className="relative w-full h-[26px] bg-stone-50 border border-stone-200 rounded overflow-hidden">
-                                     <input 
-                                        type="color" 
-                                        value={style.textColor}
-                                        onChange={(e) => updateCard(card.id, { content: { ...card.content, style: { ...style, textColor: e.target.value } } })}
-                                        className="absolute -top-2 -left-2 w-[200%] h-[200%] cursor-pointer p-0 m-0"
-                                     />
-                                 </div>
+                             <div className="relative w-full h-[26px] bg-stone-50 border border-stone-200 rounded overflow-hidden">
+                                 <input type="color" value={style.textColor} onChange={(e) => updateCard(card.id, { isFlipped: false, content: { ...card.content, style: { ...style, textColor: e.target.value } } })} className="absolute -top-2 -left-2 w-[200%] h-[200%] cursor-pointer p-0 m-0" />
                              </div>
                          </div>
                     </div>
-
-                    {/* Font Family */}
                     <div className="grid grid-cols-3 gap-2">
-                        <button onClick={() => updateCard(card.id, { content: { ...card.content, style: { ...style, fontFamily: 'font-serif' } } })} className={`text-[10px] py-1 border rounded ${style.fontFamily === 'font-serif' ? 'bg-stone-900 text-white border-stone-900' : 'text-stone-600 border-stone-200'}`}>Serif</button>
-                        <button onClick={() => updateCard(card.id, { content: { ...card.content, style: { ...style, fontFamily: 'font-sans' } } })} className={`text-[10px] py-1 border rounded ${style.fontFamily === 'font-sans' ? 'bg-stone-900 text-white border-stone-900' : 'text-stone-600 border-stone-200'}`}>Sans</button>
-                        <button onClick={() => updateCard(card.id, { content: { ...card.content, style: { ...style, fontFamily: 'font-mono' } } })} className={`text-[10px] py-1 border rounded ${style.fontFamily === 'font-mono' ? 'bg-stone-900 text-white border-stone-900' : 'text-stone-600 border-stone-200'}`}>Mono</button>
+                        <button onClick={() => updateCard(card.id, { isFlipped: false, content: { ...card.content, style: { ...style, fontFamily: 'font-serif' } } })} className={`text-[10px] py-1 border rounded ${style.fontFamily === 'font-serif' ? 'bg-stone-900 text-white border-stone-900' : 'text-stone-600 border-stone-200'}`}>Serif</button>
+                        <button onClick={() => updateCard(card.id, { isFlipped: false, content: { ...card.content, style: { ...style, fontFamily: 'font-sans' } } })} className={`text-[10px] py-1 border rounded ${style.fontFamily === 'font-sans' ? 'bg-stone-900 text-white border-stone-900' : 'text-stone-600 border-stone-200'}`}>Sans</button>
+                        <button onClick={() => updateCard(card.id, { isFlipped: false, content: { ...card.content, style: { ...style, fontFamily: 'font-mono' } } })} className={`text-[10px] py-1 border rounded ${style.fontFamily === 'font-mono' ? 'bg-stone-900 text-white border-stone-900' : 'text-stone-600 border-stone-200'}`}>Mono</button>
                     </div>
-
                     <div className="h-px bg-stone-100 w-full"></div>
-                    
-                    {/* Opacity Slider */}
-                    <div className="flex flex-col gap-1.5">
+                    <div className="flex flex-col gap-1.5" onPointerDown={(e) => e.stopPropagation()}>
                         <div className="flex justify-between">
                             <span className="text-[11px] font-bold text-stone-800">Image Opacity</span>
                             <span className="text-[10px] text-stone-500">{Math.round(style.opacity * 100)}%</span>
                         </div>
-                        <input 
-                            type="range" min="0" max="1" step="0.1" value={style.opacity}
-                            onChange={(e) => updateCard(card.id, { content: { ...card.content, style: { ...style, opacity: parseFloat(e.target.value) } } })}
-                            className="w-full h-1.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-stone-900"
-                        />
+                        <input type="range" min="0" max="1" step="0.1" value={style.opacity} onChange={(e) => updateCard(card.id, { isFlipped: false, content: { ...card.content, style: { ...style, opacity: parseFloat(e.target.value) } } })} className="w-full h-1.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-stone-900"/>
                     </div>
-
                      <button onClick={() => onDelete(card.id)} className="w-full text-center text-xs px-2 py-2 text-red-600 hover:bg-red-50 font-medium rounded border border-transparent hover:border-red-100 flex items-center justify-center gap-2 mt-1"><Trash2 size={14} /> Delete Card</button>
                 </div>
             )}
 
-            {/* ... INPUT / LOADING / CHOICE modes remain same ... */}
+            {/* --- TAB: BACKSIDE (Templates) --- */}
+            {menuMode === 'main' && menuTab === 'backside' && (
+                <div className="px-3 py-3 flex flex-col gap-3 bg-white h-full overflow-y-auto max-h-[400px]">
+                    <span className="text-[11px] font-bold text-stone-800 uppercase tracking-wide">Built-in Templates</span>
+                    
+                    {/* Grid of Templates */}
+                    <div className="grid grid-cols-2 gap-2">
+                        {Object.entries(TEMPLATES).map(([key, tmpl]) => (
+                            <button
+                                key={key}
+                                onClick={() => updateTemplate(key as TemplateId)}
+                                className={`flex flex-col gap-1 p-2 rounded-lg border text-left transition-all ${backData.templateId === key ? 'border-stone-900 bg-stone-50 ring-1 ring-stone-900' : 'border-stone-200 hover:border-stone-400'}`}
+                            >
+                                <div className="flex items-center gap-1.5">
+                                    <LayoutTemplate size={12} className={backData.templateId === key ? 'text-stone-900' : 'text-stone-400'} />
+                                    <span className={`text-xs font-bold ${backData.templateId === key ? 'text-stone-900' : 'text-stone-600'}`}>{tmpl.label}</span>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* NEW: QUOTE DISPLAY */}
+                    <div className="mt-2 px-1 text-center">
+                        <p className="font-serif text-lg italic text-stone-500 leading-relaxed">
+                            "{currentTemplate.quote}"
+                        </p>
+                    </div>
+
+                    <div className="h-px bg-stone-100 w-full my-1"></div>
+
+                    {/* Community Marketplace Placeholder */}
+                    <div className="flex flex-col gap-2 opacity-60">
+                         <span className="text-[11px] font-bold text-stone-400 uppercase tracking-wide">Community Marketplace</span>
+                         <div className="p-3 border border-dashed border-stone-200 rounded-lg flex items-center justify-center gap-2 bg-stone-50">
+                             <Lock size={12} className="text-stone-400"/>
+                             <span className="text-[10px] font-bold text-stone-400">Coming Soon</span>
+                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ... INPUT / LOADING / CHOICE modes (unchanged) ... */}
             {menuMode === 'input' && (
                 <div className="px-3 py-3 flex flex-col gap-3 bg-white">
                     <span className="text-xs font-bold text-stone-800">Paste Pinterest/Image Link</span>
-                    <input 
-                        autoFocus
-                        value={urlInput}
-                        onChange={(e) => setUrlInput(e.target.value)}
-                        placeholder="https://pinterest.com/pin/..."
-                        className="text-xs p-2.5 bg-stone-50 border border-stone-300 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-stone-900 text-stone-900"
-                        onKeyDown={(e) => e.key === 'Enter' && handleFetch()}
-                    />
+                    <input autoFocus value={urlInput} onChange={(e) => setUrlInput(e.target.value)} placeholder="https://..." className="text-xs p-2.5 bg-stone-50 border border-stone-300 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-stone-900 text-stone-900" onKeyDown={(e) => e.key === 'Enter' && handleFetch()} />
                     <div className="flex gap-2">
                         <button onClick={() => setMenuMode('main')} className="flex-1 text-xs py-2 text-stone-600 hover:bg-stone-100 rounded font-medium border border-stone-200">Back</button>
                         <button onClick={handleFetch} className="flex-1 text-xs py-2 bg-stone-900 text-white hover:bg-stone-800 rounded-lg font-bold flex items-center justify-center gap-1">Fetch</button>
                     </div>
                 </div>
             )}
-            
              {menuMode === 'loading' && (
                  <div className="px-3 py-8 flex flex-col items-center justify-center gap-3 text-stone-500 bg-white">
                     <Loader2 size={24} className="animate-spin text-stone-900" />
                     <span className="text-xs font-medium">Fetching Media...</span>
                  </div>
             )}
-
             {menuMode === 'choice' && pendingMedia && (
                 <div className="px-3 py-3 flex flex-col gap-3 bg-white">
                     <p className="text-[10px] uppercase font-bold text-stone-500">Found 2 Formats</p>
-                    <button 
-                        onClick={() => applyMedia(pendingMedia.img || null, pendingMedia.video || null)}
-                        className="flex items-center gap-3 text-xs bg-blue-50 hover:bg-blue-100 border border-blue-100 text-blue-900 px-3 py-3 rounded-lg transition-colors text-left"
-                    >
+                    <button onClick={() => applyMedia(pendingMedia.img || null, pendingMedia.video || null)} className="flex items-center gap-3 text-xs bg-blue-50 hover:bg-blue-100 border border-blue-100 text-blue-900 px-3 py-3 rounded-lg transition-colors text-left">
                         <div className="bg-white p-1.5 rounded-md shadow-sm text-blue-600"><Film size={16}/></div>
-                        <div className="flex flex-col">
-                            <span className="font-bold text-sm">Use Video</span>
-                            <span className="text-[10px] opacity-70">Looping MP4</span>
-                        </div>
+                        <div className="flex flex-col"><span className="font-bold text-sm">Use Video</span><span className="text-[10px] opacity-70">Looping MP4</span></div>
                     </button>
-                    <button 
-                        onClick={() => applyMedia(pendingMedia.img || null, null)}
-                        className="flex items-center gap-3 text-xs bg-stone-50 hover:bg-stone-100 border border-stone-200 text-stone-900 px-3 py-3 rounded-lg transition-colors text-left"
-                    >
+                    <button onClick={() => applyMedia(pendingMedia.img || null, null)} className="flex items-center gap-3 text-xs bg-stone-50 hover:bg-stone-100 border border-stone-200 text-stone-900 px-3 py-3 rounded-lg transition-colors text-left">
                          <div className="bg-white p-1.5 rounded-md shadow-sm text-stone-600"><ImageIcon size={16}/></div>
-                        <div className="flex flex-col">
-                             <span className="font-bold text-sm">Use Image</span>
-                             <span className="text-[10px] opacity-70">Static JPG</span>
-                        </div>
+                        <div className="flex flex-col"><span className="font-bold text-sm">Use Image</span><span className="text-[10px] opacity-70">Static JPG</span></div>
                     </button>
                 </div>
             )}

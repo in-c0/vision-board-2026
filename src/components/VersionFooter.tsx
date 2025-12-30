@@ -7,6 +7,18 @@ import { X, GitCommit, ScrollText } from "lucide-react";
 // --- CHANGELOG DATA ---
 const CHANGELOG = [
   {
+    version: "v0.02",
+    date: "Dec 31, 2025",
+    title: "Persistence & Time Travel",
+    description: "Introduced local storage caching so you never lose your flow. The board now remembers exactly where you left off.",
+    features: [
+      "Auto-Save: Board state saves automatically every 30 seconds if changes are detected.",
+      "Local History: Restore previous versions of your board from the 'Saved at...' dropdown.",
+      "Image Persistence: Uploaded images are now converted to Base64, so they survive browser refreshes.",
+      "Smart Restore: The board automatically loads your last session when you open the app."
+    ]
+  },
+  {
     version: "v0.01",
     date: "Dec 30, 2025",
     title: "The Foundation (MVP)",

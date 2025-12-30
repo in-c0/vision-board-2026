@@ -80,16 +80,22 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
 
   const currentTemplate = TEMPLATES[backData.templateId as TemplateId] || TEMPLATES.default;
 
-  // --- 1. LOCAL UPLOAD LOGIC ---
+  // --- 1. LOCAL UPLOAD LOGIC (Base64 for Persistence) ---
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-        const objectUrl = URL.createObjectURL(file);
-        updateCard(card.id, { 
-            isFlipped: false, // Force Front
-            type: 'image',
-            content: { ...card.content, frontUrl: objectUrl, frontVideoUrl: undefined } 
-        });
+        // We use FileReader to create a Base64 string. 
+        // This string SAVES in localStorage, whereas createObjectURL does not.
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64String = reader.result as string;
+            updateCard(card.id, { 
+                isFlipped: false, 
+                type: 'image',
+                content: { ...card.content, frontUrl: base64String, frontVideoUrl: undefined } 
+            });
+        };
+        reader.readAsDataURL(file);
         e.target.value = '';
     }
   };

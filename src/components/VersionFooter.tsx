@@ -1,0 +1,133 @@
+"use client";
+
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { X, GitCommit, ScrollText } from "lucide-react";
+
+// --- CHANGELOG DATA ---
+const CHANGELOG = [
+  {
+    version: "v0.01",
+    date: "Dec 30, 2025",
+    title: "The Foundation (MVP)",
+    description: "Initial release of the infinite vision board. Focused on tactile interactions, media fetching, and structured coaching templates.",
+    features: [
+      "Infinite Canvas: A cozy, drag-and-pan workspace.",
+      "Smart Cards: 3D flip interactions with 'What You See Is What You Edit' logic.",
+      "Media Engine: Pinterest video/image unfurling & local drag-and-drop uploads.",
+      "Visual Editor: Draggable menu for opacity, fonts, z-index layering, and colors.",
+      "Backside Templates: 4 Built-in coaching frameworks (Identity, Environment, Community, Habit).",
+      "UX Polish: High-contrast inputs, draggable windows, and smooth physics."
+    ]
+  }
+];
+
+export default function VersionFooter() {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <>
+      {/* --- FOOTER BADGE --- */}
+      <div className="fixed bottom-4 right-4 z-50">
+        <button
+          onClick={() => setIsOpen(true)}
+          className="group flex items-center gap-2 px-3 py-1.5 bg-white/80 backdrop-blur-md border border-stone-200 rounded-full shadow-sm hover:shadow-md hover:border-stone-300 transition-all"
+        >
+          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+          <span className="text-xs font-mono font-medium text-stone-600 group-hover:text-stone-900">
+            {CHANGELOG[0].version}
+          </span>
+        </button>
+      </div>
+
+      {/* --- CHANGELOG MODAL --- */}
+      <AnimatePresence>
+        {isOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsOpen(false)}
+              className="absolute inset-0 bg-stone-900/20 backdrop-blur-sm"
+            />
+
+            {/* Modal Window */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden border border-stone-100 max-h-[80vh] flex flex-col"
+            >
+              {/* Header */}
+              <div className="px-6 py-4 border-b border-stone-100 flex justify-between items-center bg-stone-50">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-stone-200 rounded-lg text-stone-600">
+                    <ScrollText size={18} />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-stone-800">Update Log</h2>
+                    <p className="text-[10px] text-stone-500 font-medium">Project History</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className="p-2 hover:bg-stone-200 rounded-full text-stone-400 hover:text-stone-700 transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Scrollable Content */}
+              <div className="p-6 overflow-y-auto">
+                <div className="relative border-l border-stone-200 ml-3 space-y-8">
+                  {CHANGELOG.map((log, index) => (
+                    <div key={index} className="relative pl-8">
+                      {/* Timeline Dot */}
+                      <div className="absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full bg-stone-900 ring-4 ring-white" />
+                      
+                      <div className="flex flex-col gap-1 mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-stone-900 bg-stone-100 px-2 py-0.5 rounded text-mono">
+                            {log.version}
+                          </span>
+                          <span className="text-xs text-stone-400 font-medium">
+                            {log.date}
+                          </span>
+                        </div>
+                        <h3 className="text-base font-serif italic text-stone-800">
+                          {log.title}
+                        </h3>
+                      </div>
+
+                      <p className="text-xs text-stone-500 leading-relaxed mb-4">
+                        {log.description}
+                      </p>
+
+                      <ul className="space-y-2">
+                        {log.features.map((feature, i) => (
+                          <li key={i} className="flex items-start gap-2 text-xs text-stone-700">
+                            <GitCommit size={14} className="mt-0.5 shrink-0 text-stone-300" />
+                            <span>{feature}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Footer CTA */}
+              <div className="p-4 bg-stone-50 border-t border-stone-100 text-center">
+                <p className="text-[10px] text-stone-400">
+                   Vision Board 2026 • Building in Public
+                </p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}

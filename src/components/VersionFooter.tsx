@@ -7,6 +7,18 @@ import { X, GitCommit, ScrollText } from "lucide-react";
 // --- CHANGELOG DATA ---
 const CHANGELOG = [
   {
+    version: "v0.03",
+    date: "Jan 01, 2026",
+    title: "Identity & Sync (Authentication)",
+    description: "Added secure Google Login to prepare for multi-device syncing. The board now actively monitors your connection status.",
+    features: [
+      "Google OAuth: Secure login infrastructure using NextAuth.js.",
+      "Smart Nudge: Unobtrusive popups remind you to log in when data is saved locally.",
+      "User Profile: Top bar now displays your avatar and name when connected.",
+      "Safety Checks: Auto-save detects if you are relying on cache vs. cloud (cloud sync pipeline ready)."
+    ]
+  },
+  {
     version: "v0.02",
     date: "Dec 31, 2025",
     title: "Persistence & Time Travel",

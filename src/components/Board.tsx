@@ -5,7 +5,7 @@ import { useSession, signIn, signOut } from "next-auth/react";
 import VisionCard from "./VisionCard";
 import HelpModal from "./HelpModal";
 import { CardData } from "@/types/board";
-import { Plus, History, CheckCircle2, Cloud, CloudOff, LogIn, User, X, Loader2 } from "lucide-react";
+import { Plus, Loader2, Cloud, CloudOff, X, User, LogIn } from "lucide-react"; // Cleanup imports
 import { saveState, loadCurrentState, getHistory, HistoryPoint } from "@/utils/history";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -28,143 +28,146 @@ export default function Board() {
 
   // Helper: Format Date
   const formatDate = (timestamp: number | string | Date) => {
-      return new Date(timestamp).toLocaleString('en-US', { 
-          month: 'short', 
-          day: 'numeric', 
-          hour: 'numeric', 
-          minute: '2-digit' 
-      });
+      return new Date(timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   };
 
-  // --- 1. THE REUSABLE SAVE FUNCTION ---
+  // --- 1. REUSABLE SAVE ---
   const triggerSave = useCallback(async () => {
     setSaveStatus("saving");
     
-    // PATH A: CLOUD SAVE
     if (status === "authenticated") {
         try {
-            const res = await fetch("/api/board/sync", {
-                method: "POST",
-                body: JSON.stringify({ cards }),
-            });
+            const res = await fetch("/api/board/sync", { method: "POST", body: JSON.stringify({ cards }) });
             const data = await res.json();
-            
             if (res.ok) {
                 setSaveStatus("saved");
                 setLastSavedTime(formatDate(data.updatedAt));
                 lastSavedString.current = JSON.stringify(cards);
-
-                // *** FIX: MIRROR TO LOCAL HISTORY ***
-                // Even though we saved to Cloud, we save a local snapshot 
-                // so the History Dropdown stays populated.
-                saveState(cards); 
-                setHistoryList(getHistory()); 
-            } else {
-                throw new Error();
-            }
-        } catch (e) {
-            setSaveStatus("error");
-        }
-    } 
-    // PATH B: LOCAL SAVE
-    else {
+                saveState(cards); setHistoryList(getHistory()); // Mirror to local
+            } else throw new Error();
+        } catch (e) { setSaveStatus("error"); }
+    } else {
         await new Promise(r => setTimeout(r, 500)); 
         const time = saveState(cards); 
-        
         if (time) {
             setLastSavedTime(formatDate(Date.now()));
             setHistoryList(getHistory());
             lastSavedString.current = JSON.stringify(cards);
             setSaveStatus("local");
-            
-            setShowLoginNudge(true);
-            setTimeout(() => setShowLoginNudge(false), 5000);
+            setShowLoginNudge(true); setTimeout(() => setShowLoginNudge(false), 5000);
         }
     }
   }, [cards, status]);
 
-  // --- 2. KEYBOARD SHORTCUT (Ctrl + S) ---
+  // --- 2. KEYBOARD & AUTO-SAVE ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault(); 
-        triggerSave();
-      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); triggerSave(); }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [triggerSave]);
 
-  // --- 3. AUTO-SAVE INTERVAL ---
   useEffect(() => {
     if (!isLoaded) return;
     const interval = setInterval(() => {
         const currentString = JSON.stringify(cards);
-        if (currentString !== lastSavedString.current) {
-            triggerSave();
-        }
+        if (currentString !== lastSavedString.current) triggerSave();
     }, 30000); 
     return () => clearInterval(interval);
   }, [cards, isLoaded, triggerSave]);
 
-  // --- 4. INITIAL LOAD ---
+  // --- 3. INIT ---
   useEffect(() => {
     async function initBoard() {
-      // 1. Load Local
       const local = loadCurrentState();
       if (local && local.length > 0) {
-        setCards(local);
-        setLastSavedTime("Restored Local");
-        lastSavedString.current = JSON.stringify(local);
+        setCards(local); setLastSavedTime("Restored Local"); lastSavedString.current = JSON.stringify(local);
       }
-
-      // 2. Load Cloud (and overwrite if exists)
       if (status === "authenticated") {
         setSaveStatus("saving");
         try {
             const res = await fetch("/api/board/sync");
             const data = await res.json();
-            if (data.cards && Array.isArray(data.cards) && data.cards.length > 0) {
-                setCards(data.cards);
-                lastSavedString.current = JSON.stringify(data.cards);
-                setSaveStatus("saved");
-                setLastSavedTime(formatDate(data.updatedAt));
-                
-                // Populate local history with cloud data on load
+            if (data.cards?.length > 0) {
+                setCards(data.cards); lastSavedString.current = JSON.stringify(data.cards);
+                setSaveStatus("saved"); setLastSavedTime(formatDate(data.updatedAt));
                 saveState(data.cards);
             }
-        } catch (e) { console.error("Cloud load failed", e); setSaveStatus("error"); }
-      } else {
-         setTimeout(() => setShowLoginNudge(true), 2000);
-      }
-      
-      // 3. Hydrate History List
-      setHistoryList(getHistory());
-      setIsLoaded(true);
+        } catch (e) { console.error(e); setSaveStatus("error"); }
+      } else { setTimeout(() => setShowLoginNudge(true), 2000); }
+      setHistoryList(getHistory()); setIsLoaded(true);
     }
     if (status !== "loading") initBoard();
   }, [status]);
 
-  // Actions
+  // --- ACTIONS ---
+
+  // *** NEW: SMART SPAWN LOGIC ***
+  const findSmartPosition = () => {
+    if (typeof window === 'undefined') return { x: 0, y: 0 };
+    
+    const centerX = window.innerWidth / 2 - 140; // Center minus half card width
+    const centerY = window.innerHeight / 2 - 190; // Center minus half card height
+    
+    // If empty, start dead center
+    if (cards.length === 0) return { x: centerX, y: centerY };
+
+    // Spiral Algorithm
+    let angle = 0;
+    let radius = 50;
+    const collisionThreshold = 200; // Minimum distance between cards
+
+    for (let i = 0; i < 50; i++) { // Try 50 times
+        const x = centerX + radius * Math.cos(angle);
+        const y = centerY + radius * Math.sin(angle);
+
+        // Check collision with ALL existing cards
+        const hasCollision = cards.some(card => {
+            const dist = Math.sqrt(Math.pow(card.x - x, 2) + Math.pow(card.y - y, 2));
+            return dist < collisionThreshold;
+        });
+
+        if (!hasCollision) {
+            // Found a spot! Add a little random jitter so it's not perfect
+            return { 
+                x: x + (Math.random() - 0.5) * 20, 
+                y: y + (Math.random() - 0.5) * 20 
+            };
+        }
+
+        // Spiral out
+        angle += 1; // Increment angle (~57 degrees)
+        radius += 15; // Increment radius
+    }
+
+    // Fallback: Just put it near the last card + random
+    const last = cards[cards.length - 1];
+    return { x: last.x + 40, y: last.y + 40 };
+  };
+
   const addCard = () => {
+    const { x, y } = findSmartPosition();
+    
     const newCard: CardData = {
       id: Math.random().toString(36).substr(2, 9), type: "text",
-      x: window.innerWidth / 2 - 140, y: window.innerHeight / 2 - 190,
-      width: 280, height: 380, rotation: (Math.random() - 0.5) * 6,
+      x, y,
+      width: 280, height: 380, 
+      // More rotation variance (-8 to +8 degrees) for messy look
+      rotation: (Math.random() - 0.5) * 16, 
       content: { frontText: "New Intention", backReflection: { identity: "", practice: "" }, style: { opacity: 1, fontSize: 32, fontFamily: 'font-serif', fontWeight: 'normal', fontStyle: 'italic', textColor: '#292524' } },
       isFlipped: false,
     };
     setCards([...cards, newCard]);
     setSelectedId(newCard.id);
   };
+  
   const updateCard = (id: string, newData: Partial<CardData>) => setCards((prevCards) => prevCards.map((c) => (c.id === id ? { ...c, ...newData } : c)));
   const deleteCard = (id: string) => setCards((prevCards) => prevCards.filter(c => c.id !== id));
   const restoreCheckpoint = (point: HistoryPoint) => {
       const dateStr = formatDate(point.id);
       if (confirm(`Restore checkpoint from ${dateStr}?`)) {
-          setCards(point.cards);
-          lastSavedString.current = ""; 
-          setShowHistory(false);
+          setCards(point.cards); lastSavedString.current = ""; setShowHistory(false);
       }
   };
 
@@ -174,10 +177,8 @@ export default function Board() {
     <div className="relative w-full h-screen overflow-hidden bg-[#F9F8F6]" onPointerDown={() => setSelectedId(null)}>
       <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
 
-      {/* --- TOP BAR --- */}
+      {/* TOP BAR */}
       <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-start z-50 pointer-events-none select-none">
-        
-        {/* LEFT: Save Status */}
         <div className="pointer-events-auto flex flex-col items-start gap-1">
             <h1 className="text-xl font-serif text-stone-800 tracking-tight">2026 Vision</h1>
             <div className="relative">
@@ -186,20 +187,15 @@ export default function Board() {
                     {saveStatus === 'saved' && <Cloud size={12} className="text-blue-500"/>}
                     {saveStatus === 'local' && <CloudOff size={12} className="text-orange-400"/>}
                     {saveStatus === 'error' && <X size={12} className="text-red-500"/>}
-                    
-                    <span className="font-medium">
-                        {saveStatus === 'saving' ? "Saving..." : lastSavedTime.includes("Restored") ? lastSavedTime : `Saved ${lastSavedTime}`}
-                    </span>
+                    <span className="font-medium">{saveStatus === 'saving' ? "Saving..." : lastSavedTime.includes("Restored") ? lastSavedTime : `Saved ${lastSavedTime}`}</span>
                 </button>
-                {/* Local History Dropdown */}
                 {showHistory && (
                     <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-stone-100 overflow-hidden flex flex-col z-[60]">
                         <div className="px-3 py-2 bg-stone-50 border-b border-stone-100 text-[10px] font-bold uppercase tracking-wider text-stone-500">Session History (Backups)</div>
                         <div className="max-h-48 overflow-y-auto">
                             {historyList.map((point) => (
                                 <button key={point.id} onClick={() => restoreCheckpoint(point)} className="w-full text-left px-3 py-2 text-xs text-stone-600 hover:bg-blue-50 hover:text-blue-600 flex justify-between border-b border-stone-50 last:border-0">
-                                    <span>{formatDate(point.id)}</span>
-                                    <span className="text-[10px] text-stone-400">{point.cards.length} items</span>
+                                    <span>{formatDate(point.id)}</span><span className="text-[10px] text-stone-400">{point.cards.length} items</span>
                                 </button>
                             ))}
                         </div>
@@ -207,23 +203,17 @@ export default function Board() {
                 )}
             </div>
         </div>
-        
-        {/* RIGHT: Auth & Actions */}
         <div className="pointer-events-auto flex gap-3 items-center">
             <HelpModal />
             <div className="relative">
                 {status === "authenticated" ? (
                      <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-stone-200 rounded-full shadow-sm">
-                         {session.user?.image ? (
-                             <img src={session.user.image} alt="User" className="w-5 h-5 rounded-full" />
-                         ) : <User size={14} className="text-stone-600"/>}
+                         {session.user?.image ? <img src={session.user.image} alt="User" className="w-5 h-5 rounded-full" /> : <User size={14} className="text-stone-600"/>}
                          <span className="text-xs font-medium text-stone-600">{session.user?.name?.split(' ')[0]}</span>
                          <button onClick={() => signOut()} className="ml-2 text-[10px] text-stone-400 hover:text-red-500 font-bold uppercase">Log Out</button>
                      </div>
                 ) : (
-                    <button onClick={() => signIn('google')} className="flex items-center gap-2 px-4 py-2 bg-white border border-stone-200 rounded-full text-stone-600 text-xs font-bold hover:bg-stone-50 hover:border-stone-300 transition-all shadow-sm">
-                        <LogIn size={14} /> Log in
-                    </button>
+                    <button onClick={() => signIn('google')} className="flex items-center gap-2 px-4 py-2 bg-white border border-stone-200 rounded-full text-stone-600 text-xs font-bold hover:bg-stone-50 hover:border-stone-300 transition-all shadow-sm"><LogIn size={14} /> Log in</button>
                 )}
                 <AnimatePresence>
                     {showLoginNudge && status === "unauthenticated" && (

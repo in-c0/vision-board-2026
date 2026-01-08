@@ -1,5 +1,8 @@
 TODO:
 
+almost done; now set up a help email, discord server and a website to deploy, and start going live.
+
+
 Let's add an onboarding tutorial. It's just an animated popup with 'don't show this again' option and a close button.  It explains: Select a card, then drag to move. / Rotate/resize by click and dragging the relative UI.  / Double-click on the card to flip. / Pan the board by click and dragging with a mouse wheel, or alternatively just click+drag while holding the Ctrl key. / Zoom in and out by scrolling up/down with mouse while holding Ctrl key, or by clicking on the +/- UI.
 (maybe animated as GIF)
 

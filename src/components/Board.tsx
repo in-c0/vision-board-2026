@@ -3,94 +3,127 @@
 import { useState, useEffect, useRef } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import VisionCard from "./VisionCard";
-import HelpModal from "./HelpModal"; // <--- Imported HelpModal
+import HelpModal from "./HelpModal";
 import { CardData } from "@/types/board";
-// Added 'X' to imports below
-import { Plus, History, CheckCircle2, CloudOff, CloudLightning, LogIn, User, X } from "lucide-react";
+import { Plus, History, CheckCircle2, Cloud, CloudOff, LogIn, User, X, Loader2 } from "lucide-react";
 import { saveState, loadCurrentState, getHistory, HistoryPoint } from "@/utils/history";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Board() {
-  const { data: session, status } = useSession(); 
+  const { data: session, status } = useSession();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [cards, setCards] = useState<CardData[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   
-  // Auto-Save States
-  const [lastSaved, setLastSaved] = useState<string>("Not saved");
+  // Sync States
+  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "local" | "error">("local");
+  const [lastSavedTime, setLastSavedTime] = useState<string>("Not saved");
+  
+  // Local History
   const [historyList, setHistoryList] = useState<HistoryPoint[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   
-  // Nudge States
+  // Nudge
   const [showLoginNudge, setShowLoginNudge] = useState(false);
-  const [nudgeMessage, setNudgeMessage] = useState("");
 
+  // We use this to debounce saves (prevent spamming the API)
   const lastSavedString = useRef<string>("");
 
-  // --- 1. INITIAL LOAD & FIRST VISIT CHECK ---
+  // --- 1. INITIAL LOAD (Hybrid Strategy) ---
   useEffect(() => {
-    const saved = loadCurrentState();
-    if (saved && saved.length > 0) {
-      setCards(saved);
-      setLastSaved("Restored");
-      lastSavedString.current = JSON.stringify(saved);
-    } else {
-        setCards([{
-            id: "1", type: "text", x: window.innerWidth/2 - 140, y: window.innerHeight/2 - 190, 
-            width: 280, height: 380, rotation: -2, isFlipped: false,
-            content: { frontText: "Soft Power", style: { opacity: 1, fontSize: 32, fontFamily: 'font-serif', fontWeight: 'normal', fontStyle: 'italic', textColor: '#292524' }, backReflection: { identity: "", practice: "" } },
-        }]);
-    }
-    setHistoryList(getHistory());
-    setIsLoaded(true);
+    async function initBoard() {
+      // A. Try loading Local first (Fastest)
+      const local = loadCurrentState();
+      if (local && local.length > 0) {
+        setCards(local);
+        setLastSavedTime("Restored Local");
+        lastSavedString.current = JSON.stringify(local);
+      }
 
-    // FIRST VISIT NUDGE
-    if (status === "unauthenticated") {
-        const timer = setTimeout(() => {
-            setShowLoginNudge(true);
-            setNudgeMessage("Log in to sync your vision across devices.");
-        }, 2000);
-        return () => clearTimeout(timer);
+      // B. If Logged In, Fetch Cloud Data & Merge/Override
+      if (status === "authenticated") {
+        setSaveStatus("saving");
+        try {
+            const res = await fetch("/api/board/sync");
+            const data = await res.json();
+            
+            if (data.cards && Array.isArray(data.cards) && data.cards.length > 0) {
+                // For MVP, Cloud wins. In v2, we could ask user to merge.
+                setCards(data.cards);
+                lastSavedString.current = JSON.stringify(data.cards);
+                setSaveStatus("saved");
+                setLastSavedTime(new Date(data.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+            }
+        } catch (e) {
+            console.error("Cloud load failed", e);
+            setSaveStatus("error");
+        }
+      } else {
+         // First visit check for nudges
+         setTimeout(() => setShowLoginNudge(true), 2000);
+      }
+      
+      setHistoryList(getHistory());
+      setIsLoaded(true);
     }
+
+    if (status !== "loading") initBoard();
   }, [status]);
 
-  // --- 2. AUTO-SAVE INTERVAL ---
+
+  // --- 2. AUTO-SAVE INTERVAL (Hybrid) ---
   useEffect(() => {
     if (!isLoaded) return;
 
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
         const currentString = JSON.stringify(cards);
         
+        // Only save if data changed
         if (currentString !== lastSavedString.current) {
-            const time = saveState(cards); 
-            if (time) {
-                setLastSaved(time);
-                setHistoryList(getHistory());
-                lastSavedString.current = currentString;
-                
-                // RECURRING NUDGE
-                if (status === "unauthenticated") {
-                    setNudgeMessage("Saved to local cache only. Log in to protect your data.");
+            
+            // PATH A: CLOUD SAVE
+            if (status === "authenticated") {
+                setSaveStatus("saving");
+                try {
+                    const res = await fetch("/api/board/sync", {
+                        method: "POST",
+                        body: JSON.stringify({ cards }),
+                    });
+                    const data = await res.json();
+                    
+                    if (res.ok) {
+                        setSaveStatus("saved");
+                        setLastSavedTime(new Date(data.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+                        lastSavedString.current = currentString;
+                    } else {
+                        throw new Error();
+                    }
+                } catch (e) {
+                    setSaveStatus("error");
+                }
+            } 
+            
+            // PATH B: LOCAL SAVE (Backup)
+            else {
+                const time = saveState(cards);
+                if (time) {
+                    setLastSavedTime(time);
+                    setHistoryList(getHistory());
+                    lastSavedString.current = currentString;
+                    setSaveStatus("local");
+                    
+                    // Nudge user to upgrade
                     setShowLoginNudge(true);
                     setTimeout(() => setShowLoginNudge(false), 5000);
                 }
             }
         }
-    }, 30000); 
+    }, 30000); // 30s Check
 
     return () => clearInterval(interval);
   }, [cards, isLoaded, status]);
 
-  // --- ACTIONS ---
-  const restoreCheckpoint = (point: HistoryPoint) => {
-      if (confirm(`Restore board state from ${point.timestamp}? Unsaved changes will be lost.`)) {
-          setCards(point.cards);
-          setLastSaved(`Restored: ${point.timestamp}`);
-          lastSavedString.current = JSON.stringify(point.cards);
-          setShowHistory(false);
-      }
-  };
-
+  // Actions
   const addCard = () => {
     const newCard: CardData = {
       id: Math.random().toString(36).substr(2, 9), type: "text",
@@ -104,6 +137,13 @@ export default function Board() {
   };
   const updateCard = (id: string, newData: Partial<CardData>) => setCards((prevCards) => prevCards.map((c) => (c.id === id ? { ...c, ...newData } : c)));
   const deleteCard = (id: string) => setCards((prevCards) => prevCards.filter(c => c.id !== id));
+  const restoreCheckpoint = (point: HistoryPoint) => {
+      if (confirm(`Restore local checkpoint from ${point.timestamp}?`)) {
+          setCards(point.cards);
+          lastSavedString.current = ""; // Force re-save logic next cycle
+          setShowHistory(false);
+      }
+  };
 
   if (!isLoaded) return <div className="w-full h-screen bg-[#F9F8F6]" />;
 
@@ -118,20 +158,27 @@ export default function Board() {
         <div className="pointer-events-auto flex flex-col items-start gap-1">
             <h1 className="text-xl font-serif text-stone-800 tracking-tight">2026 Vision</h1>
             <div className="relative">
-                <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 text-xs text-stone-400 hover:text-stone-600 transition-colors bg-white/50 px-2 py-1 rounded-md border border-transparent hover:border-stone-200">
-                    {lastSaved.includes("Restored") ? <History size={12} /> : status === "authenticated" ? <CloudLightning size={12} className="text-blue-500"/> : <CheckCircle2 size={12} className="text-green-500" />}
-                    <span>{lastSaved.includes("Restored") ? lastSaved : `Saved at ${lastSaved}`}</span>
+                <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 text-xs text-stone-500 hover:text-stone-700 transition-colors bg-white/50 px-2 py-1 rounded-md border border-stone-200/50 hover:border-stone-300">
+                    {/* Dynamic Icon based on Save State */}
+                    {saveStatus === 'saving' && <Loader2 size={12} className="animate-spin text-blue-500"/>}
+                    {saveStatus === 'saved' && <Cloud size={12} className="text-blue-500"/>}
+                    {saveStatus === 'local' && <CloudOff size={12} className="text-orange-400"/>}
+                    {saveStatus === 'error' && <X size={12} className="text-red-500"/>}
+                    
+                    <span className="font-medium">
+                        {saveStatus === 'saving' ? "Syncing..." : `Saved ${lastSavedTime}`}
+                    </span>
                 </button>
+                {/* Local History Dropdown */}
                 {showHistory && (
                     <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-stone-100 overflow-hidden flex flex-col z-[60]">
-                        <div className="px-3 py-2 bg-stone-50 border-b border-stone-100 text-[10px] font-bold uppercase tracking-wider text-stone-500">Saved History</div>
+                        <div className="px-3 py-2 bg-stone-50 border-b border-stone-100 text-[10px] font-bold uppercase tracking-wider text-stone-500">Local Cache History</div>
                         <div className="max-h-48 overflow-y-auto">
                             {historyList.map((point) => (
                                 <button key={point.id} onClick={() => restoreCheckpoint(point)} className="w-full text-left px-3 py-2 text-xs text-stone-600 hover:bg-blue-50 hover:text-blue-600 flex justify-between border-b border-stone-50 last:border-0">
-                                    <span>{point.timestamp}</span><span className="text-[10px] text-stone-400">{point.cards.length} cards</span>
+                                    <span>{point.timestamp}</span><span className="text-[10px] text-stone-400">{point.cards.length} items</span>
                                 </button>
                             ))}
-                            {historyList.length === 0 && <div className="px-3 py-2 text-xs text-stone-400 italic">No history yet</div>}
                         </div>
                     </div>
                 )}
@@ -140,70 +187,44 @@ export default function Board() {
         
         {/* RIGHT: Auth & Actions */}
         <div className="pointer-events-auto flex gap-3 items-center">
-            
-            {/* NEW: Guide Button */}
             <HelpModal />
-
-            {/* LOGIN AREA WITH NUDGE POPUP */}
             <div className="relative">
                 {status === "authenticated" ? (
                      <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-stone-200 rounded-full shadow-sm">
                          {session.user?.image ? (
                              <img src={session.user.image} alt="User" className="w-5 h-5 rounded-full" />
                          ) : <User size={14} className="text-stone-600"/>}
-                         <span className="text-xs font-medium text-stone-600">Hi, {session.user?.name?.split(' ')[0]}</span>
+                         <span className="text-xs font-medium text-stone-600">{session.user?.name?.split(' ')[0]}</span>
                          <button onClick={() => signOut()} className="ml-2 text-[10px] text-stone-400 hover:text-red-500 font-bold uppercase">Log Out</button>
                      </div>
                 ) : (
-                    <button 
-                        onClick={() => signIn('google')}
-                        className="flex items-center gap-2 px-4 py-2 bg-white border border-stone-200 rounded-full text-stone-600 text-xs font-bold hover:bg-stone-50 hover:border-stone-300 transition-all shadow-sm"
-                    >
-                        <LogIn size={14} /> Log in with Google
+                    <button onClick={() => signIn('google')} className="flex items-center gap-2 px-4 py-2 bg-white border border-stone-200 rounded-full text-stone-600 text-xs font-bold hover:bg-stone-50 hover:border-stone-300 transition-all shadow-sm">
+                        <LogIn size={14} /> Log in
                     </button>
                 )}
-
+                {/* Nudge Popup */}
                 <AnimatePresence>
                     {showLoginNudge && status === "unauthenticated" && (
-                        <motion.div 
-                            initial={{ opacity: 0, y: 10, x: 10 }}
-                            animate={{ opacity: 1, y: 0, x: 0 }}
-                            exit={{ opacity: 0, y: 10 }}
-                            className="absolute top-12 right-0 w-64 bg-stone-800 text-white p-3 rounded-xl shadow-xl z-[70] arrow-box"
-                        >
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute top-12 right-0 w-64 bg-stone-800 text-white p-3 rounded-xl shadow-xl z-[70]">
                             <div className="absolute -top-1.5 right-6 w-3 h-3 bg-stone-800 rotate-45" />
-                            <div className="flex gap-3 items-start relative z-10">
-                                <div className="p-1.5 bg-stone-700 rounded-lg shrink-0">
-                                    <CloudOff size={16} className="text-orange-400" />
-                                </div>
-                                <div>
-                                    <p className="text-xs font-medium leading-relaxed opacity-90">
-                                        {nudgeMessage}
-                                    </p>
-                                    <button onClick={() => signIn('google')} className="mt-2 text-[10px] font-bold uppercase tracking-wider text-blue-300 hover:text-blue-200">Connect Google &rarr;</button>
-                                </div>
+                            <div className="flex gap-3 items-start">
+                                <div className="p-1.5 bg-stone-700 rounded-lg shrink-0"><CloudOff size={16} className="text-orange-400" /></div>
+                                <div><p className="text-xs font-medium opacity-90">Saving locally. Log in to sync.</p></div>
                                 <button onClick={() => setShowLoginNudge(false)} className="text-stone-500 hover:text-white"><X size={12} /></button>
                             </div>
                         </motion.div>
                     )}
                 </AnimatePresence>
             </div>
-
             <div className="h-6 w-px bg-stone-200 mx-1"></div>
-
             <button onClick={addCard} className="flex items-center gap-2 bg-stone-900 text-stone-50 px-4 py-2 rounded-full shadow-lg hover:scale-105 transition-transform">
                 <Plus size={16} /> <span className="text-sm font-medium">Add</span>
             </button>
         </div>
       </div>
 
-      {/* Render Cards */}
       {cards.map((card) => (
-        <VisionCard 
-            key={card.id} card={card} isSelected={selectedId === card.id}
-            updateCard={updateCard} onDelete={deleteCard}
-            onSelect={(e) => { e.stopPropagation(); setSelectedId(card.id); }}
-        />
+        <VisionCard key={card.id} card={card} isSelected={selectedId === card.id} updateCard={updateCard} onDelete={deleteCard} onSelect={(e) => { e.stopPropagation(); setSelectedId(card.id); }} />
       ))}
     </div>
   );

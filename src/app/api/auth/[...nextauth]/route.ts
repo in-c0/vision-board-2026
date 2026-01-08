@@ -1,14 +1,31 @@
-import NextAuth from "next-auth";
+import NextAuth, { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
+import { PrismaAdapter } from "@next-auth/prisma-adapter";
+import { PrismaClient } from "@prisma/client";
 
-const handler = NextAuth({
+const prisma = new PrismaClient();
+
+// 1. Define Options Separately
+export const authOptions: NextAuthOptions = {
+  adapter: PrismaAdapter(prisma),
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
   ],
-  // Optional: Add callbacks here later to sync user ID with Database
-});
+  callbacks: {
+    async session({ session, user }) {
+      if (session.user) {
+        session.user.id = user.id;
+      }
+      return session;
+    }
+  }
+};
 
+// 2. Create Handler
+const handler = NextAuth(authOptions);
+
+// 3. Export Handler for the Route
 export { handler as GET, handler as POST };

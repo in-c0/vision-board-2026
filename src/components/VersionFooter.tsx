@@ -7,6 +7,18 @@ import { X, GitCommit, ScrollText } from "lucide-react";
 // --- CHANGELOG DATA ---
 const CHANGELOG = [
   {
+    version: "v0.04",
+    date: "Jan 02, 2026",
+    title: "Cloud Sync (Beta)",
+    description: "Your vision board now lives in the cloud. Seamlessly switch between local drafts and secure cloud storage.",
+    features: [
+      "Database Integration: Connected Prisma ORM with Supabase PostgreSQL for robust data storage.",
+      "Hybrid Sync Engine: Automatically switches between Local Storage (Offline) and Cloud Database (Online).",
+      "Timestamped Saves: The 'Saved' indicator now reflects the exact time your data hit the server.",
+      "Conflict Resolution: Cloud data takes precedence on login, ensuring you always see your cross-device source of truth."
+    ]
+  },
+  {
     version: "v0.03",
     date: "Jan 01, 2026",
     title: "Identity & Sync (Authentication)",

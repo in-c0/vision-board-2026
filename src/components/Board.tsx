@@ -26,7 +26,7 @@ export default function Board() {
 
   const lastSavedString = useRef<string>("");
 
-  // Helper: Format Date consistently
+  // Helper: Format Date
   const formatDate = (timestamp: number | string | Date) => {
       return new Date(timestamp).toLocaleString('en-US', { 
           month: 'short', 
@@ -53,6 +53,12 @@ export default function Board() {
                 setSaveStatus("saved");
                 setLastSavedTime(formatDate(data.updatedAt));
                 lastSavedString.current = JSON.stringify(cards);
+
+                // *** FIX: MIRROR TO LOCAL HISTORY ***
+                // Even though we saved to Cloud, we save a local snapshot 
+                // so the History Dropdown stays populated.
+                saveState(cards); 
+                setHistoryList(getHistory()); 
             } else {
                 throw new Error();
             }
@@ -62,11 +68,10 @@ export default function Board() {
     } 
     // PATH B: LOCAL SAVE
     else {
-        await new Promise(r => setTimeout(r, 500)); // UX Delay
-        const time = saveState(cards); // Returns timestamp string (legacy)
+        await new Promise(r => setTimeout(r, 500)); 
+        const time = saveState(cards); 
         
         if (time) {
-            // We use Date.now() for immediate feedback to ensure format matches
             setLastSavedTime(formatDate(Date.now()));
             setHistoryList(getHistory());
             lastSavedString.current = JSON.stringify(cards);
@@ -105,12 +110,15 @@ export default function Board() {
   // --- 4. INITIAL LOAD ---
   useEffect(() => {
     async function initBoard() {
+      // 1. Load Local
       const local = loadCurrentState();
       if (local && local.length > 0) {
         setCards(local);
         setLastSavedTime("Restored Local");
         lastSavedString.current = JSON.stringify(local);
       }
+
+      // 2. Load Cloud (and overwrite if exists)
       if (status === "authenticated") {
         setSaveStatus("saving");
         try {
@@ -121,11 +129,16 @@ export default function Board() {
                 lastSavedString.current = JSON.stringify(data.cards);
                 setSaveStatus("saved");
                 setLastSavedTime(formatDate(data.updatedAt));
+                
+                // Populate local history with cloud data on load
+                saveState(data.cards);
             }
         } catch (e) { console.error("Cloud load failed", e); setSaveStatus("error"); }
       } else {
          setTimeout(() => setShowLoginNudge(true), 2000);
       }
+      
+      // 3. Hydrate History List
       setHistoryList(getHistory());
       setIsLoaded(true);
     }
@@ -181,11 +194,10 @@ export default function Board() {
                 {/* Local History Dropdown */}
                 {showHistory && (
                     <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-stone-100 overflow-hidden flex flex-col z-[60]">
-                        <div className="px-3 py-2 bg-stone-50 border-b border-stone-100 text-[10px] font-bold uppercase tracking-wider text-stone-500">Local Cache History</div>
+                        <div className="px-3 py-2 bg-stone-50 border-b border-stone-100 text-[10px] font-bold uppercase tracking-wider text-stone-500">Session History (Backups)</div>
                         <div className="max-h-48 overflow-y-auto">
                             {historyList.map((point) => (
                                 <button key={point.id} onClick={() => restoreCheckpoint(point)} className="w-full text-left px-3 py-2 text-xs text-stone-600 hover:bg-blue-50 hover:text-blue-600 flex justify-between border-b border-stone-50 last:border-0">
-                                    {/* FIX: Calculating Date from ID (Timestamp) */}
                                     <span>{formatDate(point.id)}</span>
                                     <span className="text-[10px] text-stone-400">{point.cards.length} items</span>
                                 </button>

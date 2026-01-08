@@ -13,21 +13,34 @@ export interface CardStyle {
 
 export interface CardData {
   id: string;
-  type: CardType;
+  type: 'text' | 'image';
   x: number;
   y: number;
   width: number;
   height: number;
   rotation: number;
-  content: {    
-    frontUrl?: string;
-    frontVideoUrl?: string; // New: Video URL
-    frontText?: string;
-    backReflection: {
-      identity: string;
-      practice: string;
-    };
-    style: CardStyle; // <--- New styling object
-  };
   isFlipped: boolean;
+  content: {
+    frontText?: string;
+    frontUrl?: string;
+    frontVideoUrl?: string; // Support for MP4s
+    style?: {
+      opacity: number;
+      fontSize: number;
+      fontFamily: string;
+      fontWeight: string;
+      fontStyle: string;
+      textColor: string;
+    };
+    backReflection: {
+      identity: string;     // Legacy field (kept for safety)
+      practice: string;     // Legacy field (kept for safety)
+      
+      // New Template System Fields
+      templateId?: string; 
+      q1?: string;
+      q2?: string;
+      q3?: string;
+    };
+  };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import VisionCard from "./VisionCard";
 import HelpModal from "./HelpModal";
@@ -19,109 +19,118 @@ export default function Board() {
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "local" | "error">("local");
   const [lastSavedTime, setLastSavedTime] = useState<string>("Not saved");
   
-  // Local History
+  // History & Nudge
   const [historyList, setHistoryList] = useState<HistoryPoint[]>([]);
   const [showHistory, setShowHistory] = useState(false);
-  
-  // Nudge
   const [showLoginNudge, setShowLoginNudge] = useState(false);
 
-  // We use this to debounce saves (prevent spamming the API)
   const lastSavedString = useRef<string>("");
 
-  // --- 1. INITIAL LOAD (Hybrid Strategy) ---
+  // Helper: Format Date consistently
+  const formatDate = (timestamp: number | string | Date) => {
+      return new Date(timestamp).toLocaleString('en-US', { 
+          month: 'short', 
+          day: 'numeric', 
+          hour: 'numeric', 
+          minute: '2-digit' 
+      });
+  };
+
+  // --- 1. THE REUSABLE SAVE FUNCTION ---
+  const triggerSave = useCallback(async () => {
+    setSaveStatus("saving");
+    
+    // PATH A: CLOUD SAVE
+    if (status === "authenticated") {
+        try {
+            const res = await fetch("/api/board/sync", {
+                method: "POST",
+                body: JSON.stringify({ cards }),
+            });
+            const data = await res.json();
+            
+            if (res.ok) {
+                setSaveStatus("saved");
+                setLastSavedTime(formatDate(data.updatedAt));
+                lastSavedString.current = JSON.stringify(cards);
+            } else {
+                throw new Error();
+            }
+        } catch (e) {
+            setSaveStatus("error");
+        }
+    } 
+    // PATH B: LOCAL SAVE
+    else {
+        await new Promise(r => setTimeout(r, 500)); // UX Delay
+        const time = saveState(cards); // Returns timestamp string (legacy)
+        
+        if (time) {
+            // We use Date.now() for immediate feedback to ensure format matches
+            setLastSavedTime(formatDate(Date.now()));
+            setHistoryList(getHistory());
+            lastSavedString.current = JSON.stringify(cards);
+            setSaveStatus("local");
+            
+            setShowLoginNudge(true);
+            setTimeout(() => setShowLoginNudge(false), 5000);
+        }
+    }
+  }, [cards, status]);
+
+  // --- 2. KEYBOARD SHORTCUT (Ctrl + S) ---
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault(); 
+        triggerSave();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [triggerSave]);
+
+  // --- 3. AUTO-SAVE INTERVAL ---
+  useEffect(() => {
+    if (!isLoaded) return;
+    const interval = setInterval(() => {
+        const currentString = JSON.stringify(cards);
+        if (currentString !== lastSavedString.current) {
+            triggerSave();
+        }
+    }, 30000); 
+    return () => clearInterval(interval);
+  }, [cards, isLoaded, triggerSave]);
+
+  // --- 4. INITIAL LOAD ---
   useEffect(() => {
     async function initBoard() {
-      // A. Try loading Local first (Fastest)
       const local = loadCurrentState();
       if (local && local.length > 0) {
         setCards(local);
         setLastSavedTime("Restored Local");
         lastSavedString.current = JSON.stringify(local);
       }
-
-      // B. If Logged In, Fetch Cloud Data & Merge/Override
       if (status === "authenticated") {
         setSaveStatus("saving");
         try {
             const res = await fetch("/api/board/sync");
             const data = await res.json();
-            
             if (data.cards && Array.isArray(data.cards) && data.cards.length > 0) {
-                // For MVP, Cloud wins. In v2, we could ask user to merge.
                 setCards(data.cards);
                 lastSavedString.current = JSON.stringify(data.cards);
                 setSaveStatus("saved");
-                setLastSavedTime(new Date(data.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+                setLastSavedTime(formatDate(data.updatedAt));
             }
-        } catch (e) {
-            console.error("Cloud load failed", e);
-            setSaveStatus("error");
-        }
+        } catch (e) { console.error("Cloud load failed", e); setSaveStatus("error"); }
       } else {
-         // First visit check for nudges
          setTimeout(() => setShowLoginNudge(true), 2000);
       }
-      
       setHistoryList(getHistory());
       setIsLoaded(true);
     }
-
     if (status !== "loading") initBoard();
   }, [status]);
-
-
-  // --- 2. AUTO-SAVE INTERVAL (Hybrid) ---
-  useEffect(() => {
-    if (!isLoaded) return;
-
-    const interval = setInterval(async () => {
-        const currentString = JSON.stringify(cards);
-        
-        // Only save if data changed
-        if (currentString !== lastSavedString.current) {
-            
-            // PATH A: CLOUD SAVE
-            if (status === "authenticated") {
-                setSaveStatus("saving");
-                try {
-                    const res = await fetch("/api/board/sync", {
-                        method: "POST",
-                        body: JSON.stringify({ cards }),
-                    });
-                    const data = await res.json();
-                    
-                    if (res.ok) {
-                        setSaveStatus("saved");
-                        setLastSavedTime(new Date(data.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-                        lastSavedString.current = currentString;
-                    } else {
-                        throw new Error();
-                    }
-                } catch (e) {
-                    setSaveStatus("error");
-                }
-            } 
-            
-            // PATH B: LOCAL SAVE (Backup)
-            else {
-                const time = saveState(cards);
-                if (time) {
-                    setLastSavedTime(time);
-                    setHistoryList(getHistory());
-                    lastSavedString.current = currentString;
-                    setSaveStatus("local");
-                    
-                    // Nudge user to upgrade
-                    setShowLoginNudge(true);
-                    setTimeout(() => setShowLoginNudge(false), 5000);
-                }
-            }
-        }
-    }, 30000); // 30s Check
-
-    return () => clearInterval(interval);
-  }, [cards, isLoaded, status]);
 
   // Actions
   const addCard = () => {
@@ -138,9 +147,10 @@ export default function Board() {
   const updateCard = (id: string, newData: Partial<CardData>) => setCards((prevCards) => prevCards.map((c) => (c.id === id ? { ...c, ...newData } : c)));
   const deleteCard = (id: string) => setCards((prevCards) => prevCards.filter(c => c.id !== id));
   const restoreCheckpoint = (point: HistoryPoint) => {
-      if (confirm(`Restore local checkpoint from ${point.timestamp}?`)) {
+      const dateStr = formatDate(point.id);
+      if (confirm(`Restore checkpoint from ${dateStr}?`)) {
           setCards(point.cards);
-          lastSavedString.current = ""; // Force re-save logic next cycle
+          lastSavedString.current = ""; 
           setShowHistory(false);
       }
   };
@@ -158,15 +168,14 @@ export default function Board() {
         <div className="pointer-events-auto flex flex-col items-start gap-1">
             <h1 className="text-xl font-serif text-stone-800 tracking-tight">2026 Vision</h1>
             <div className="relative">
-                <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 text-xs text-stone-500 hover:text-stone-700 transition-colors bg-white/50 px-2 py-1 rounded-md border border-stone-200/50 hover:border-stone-300">
-                    {/* Dynamic Icon based on Save State */}
+                <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 text-xs text-stone-500 hover:text-stone-700 transition-colors bg-white/50 px-2 py-1 rounded-md border border-stone-200/50 hover:border-stone-300 min-w-[140px]">
                     {saveStatus === 'saving' && <Loader2 size={12} className="animate-spin text-blue-500"/>}
                     {saveStatus === 'saved' && <Cloud size={12} className="text-blue-500"/>}
                     {saveStatus === 'local' && <CloudOff size={12} className="text-orange-400"/>}
                     {saveStatus === 'error' && <X size={12} className="text-red-500"/>}
                     
                     <span className="font-medium">
-                        {saveStatus === 'saving' ? "Syncing..." : `Saved ${lastSavedTime}`}
+                        {saveStatus === 'saving' ? "Saving..." : lastSavedTime.includes("Restored") ? lastSavedTime : `Saved ${lastSavedTime}`}
                     </span>
                 </button>
                 {/* Local History Dropdown */}
@@ -176,7 +185,9 @@ export default function Board() {
                         <div className="max-h-48 overflow-y-auto">
                             {historyList.map((point) => (
                                 <button key={point.id} onClick={() => restoreCheckpoint(point)} className="w-full text-left px-3 py-2 text-xs text-stone-600 hover:bg-blue-50 hover:text-blue-600 flex justify-between border-b border-stone-50 last:border-0">
-                                    <span>{point.timestamp}</span><span className="text-[10px] text-stone-400">{point.cards.length} items</span>
+                                    {/* FIX: Calculating Date from ID (Timestamp) */}
+                                    <span>{formatDate(point.id)}</span>
+                                    <span className="text-[10px] text-stone-400">{point.cards.length} items</span>
                                 </button>
                             ))}
                         </div>
@@ -202,7 +213,6 @@ export default function Board() {
                         <LogIn size={14} /> Log in
                     </button>
                 )}
-                {/* Nudge Popup */}
                 <AnimatePresence>
                     {showLoginNudge && status === "unauthenticated" && (
                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute top-12 right-0 w-64 bg-stone-800 text-white p-3 rounded-xl shadow-xl z-[70]">

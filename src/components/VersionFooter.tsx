@@ -6,6 +6,18 @@ import { X, GitCommit, ScrollText } from "lucide-react";
 
 // --- CHANGELOG DATA ---
 const CHANGELOG = [
+  // Insert this at the top of the CHANGELOG array
+  {
+    version: "v0.05",
+    date: "Jan 03, 2026",
+    title: "Context-Aware Interaction",
+    description: "The interface now anticipates your intent. Menus automatically open to the correct tab based on whether you are facing the image or the reflection.",
+    features: [
+      "Smart Tabs: Right-clicking the back of a card immediately opens the 'Backside' templates menu.",
+      "Auto-Switch: Flipping a card while the menu is open automatically toggles between 'Visuals' and 'Backside' tools.",
+      "Focus Mode: Interacting with a new card or the background automatically closes any open edit menus, keeping your workspace clean."
+    ]
+  },
   {
     version: "v0.04",
     date: "Jan 02, 2026",

@@ -8,30 +8,35 @@ export interface HistoryPoint {
 
 const STORAGE_KEY = "vision_board_v02_current";
 const HISTORY_KEY = "vision_board_v02_history";
-const MAX_HISTORY = 20; // Prevent QuotaExceededError
+const MAX_HISTORY = 20;
 
 export const saveState = (cards: CardData[]) => {
   try {
-    // 1. Save Current State (Source of Truth)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cards));
 
-    // 2. Add to History Stack
     const now = new Date();
+    // NEW FORMAT: "Jan 08, 2:30 PM"
+    const timeString = now.toLocaleString('en-US', {
+        month: 'short', 
+        day: '2-digit',
+        hour: 'numeric', 
+        minute: '2-digit'
+    });
+
     const newPoint: HistoryPoint = {
       id: now.getTime(),
-      timestamp: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: timeString,
       cards: cards
     };
 
     const existingHistory = getHistory();
-    // Add new to front, slice to max
     const updatedHistory = [newPoint, ...existingHistory].slice(0, MAX_HISTORY);
     
     localStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory));
     
     return newPoint.timestamp;
   } catch (e) {
-    console.warn("Storage quota exceeded or disabled", e);
+    console.warn("Storage quota exceeded", e);
     return null;
   }
 };

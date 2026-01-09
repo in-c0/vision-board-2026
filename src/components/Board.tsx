@@ -4,8 +4,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import VisionCard from "./VisionCard";
 import HelpModal from "./HelpModal";
+import OnboardingModal from "./OnboardingModal"; // <--- Import
 import { CardData } from "@/types/board";
-import { Plus, Loader2, Cloud, CloudOff, X, User, LogIn } from "lucide-react"; // Cleanup imports
+import { Plus, Loader2, Cloud, CloudOff, X, User, LogIn, Minus, Search } from "lucide-react"; 
 import { saveState, loadCurrentState, getHistory, HistoryPoint } from "@/utils/history";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -15,6 +16,10 @@ export default function Board() {
   const [cards, setCards] = useState<CardData[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   
+  // Viewport State (Infinite Canvas)
+  const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
+  const isPanning = useRef(false);
+
   // Sync States
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "local" | "error">("local");
   const [lastSavedTime, setLastSavedTime] = useState<string>("Not saved");
@@ -31,7 +36,49 @@ export default function Board() {
       return new Date(timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   };
 
-  // --- 1. REUSABLE SAVE ---
+  // --- 1. PAN & ZOOM HANDLERS ---
+  const handleWheel = (e: React.WheelEvent) => {
+    // Zoom: Ctrl + Scroll
+    if (e.ctrlKey) {
+        e.preventDefault();
+        const delta = -e.deltaY;
+        const scaleChange = delta > 0 ? 1.1 : 0.9;
+        const newScale = Math.min(Math.max(0.1, view.scale * scaleChange), 5); // Clamp 0.1x to 5x
+        setView(prev => ({ ...prev, scale: newScale }));
+    } 
+    // Pan: Standard Wheel Scroll (Optional: mapped to pan if desired, but sticking to prompt instructions)
+    // Actually, prompt said "Pan by click and dragging with mouse wheel". 
+    // Scroll usually pans vertically. We will leave default scroll unless dragging.
+  };
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    // Pan Trigger: Middle Click (button 1) OR Ctrl + Left Click (button 0)
+    if (e.button === 1 || (e.button === 0 && e.ctrlKey)) {
+        e.preventDefault();
+        isPanning.current = true;
+    }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (isPanning.current) {
+        setView(prev => ({
+            ...prev,
+            x: prev.x + e.movementX,
+            y: prev.y + e.movementY
+        }));
+    }
+  };
+
+  const handlePointerUp = () => {
+    isPanning.current = false;
+  };
+
+  // Zoom UI Helpers
+  const zoomIn = () => setView(p => ({ ...p, scale: Math.min(p.scale * 1.2, 5) }));
+  const zoomOut = () => setView(p => ({ ...p, scale: Math.max(p.scale * 0.8, 0.1) }));
+
+
+  // --- 2. REUSABLE SAVE ---
   const triggerSave = useCallback(async () => {
     setSaveStatus("saving");
     
@@ -43,7 +90,7 @@ export default function Board() {
                 setSaveStatus("saved");
                 setLastSavedTime(formatDate(data.updatedAt));
                 lastSavedString.current = JSON.stringify(cards);
-                saveState(cards); setHistoryList(getHistory()); // Mirror to local
+                saveState(cards); setHistoryList(getHistory());
             } else throw new Error();
         } catch (e) { setSaveStatus("error"); }
     } else {
@@ -59,7 +106,7 @@ export default function Board() {
     }
   }, [cards, status]);
 
-  // --- 2. KEYBOARD & AUTO-SAVE ---
+  // --- 3. EFFECTS (Keyboard, Autosave, Init) ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); triggerSave(); }
@@ -76,74 +123,73 @@ export default function Board() {
     }, 30000); 
     return () => clearInterval(interval);
   }, [cards, isLoaded, triggerSave]);
-
-  // --- 3. INIT ---
+ 
+  // UPDATED INIT EFFECT
   useEffect(() => {
     async function initBoard() {
-      const local = loadCurrentState();
-      if (local && local.length > 0) {
-        setCards(local); setLastSavedTime("Restored Local"); lastSavedString.current = JSON.stringify(local);
-      }
-      if (status === "authenticated") {
-        setSaveStatus("saving");
+      try {
+        // 1. Try loading Local State safely
+        let localCards: CardData[] = [];
         try {
+            localCards = loadCurrentState() || [];
+        } catch (err) {
+            console.warn("Failed to load local state:", err);
+            // Optional: clear corrupted state
+            // localStorage.removeItem('vision-board-state'); 
+        }
+
+        if (localCards.length > 0) {
+            setCards(localCards);
+            setLastSavedTime("Restored Local");
+            lastSavedString.current = JSON.stringify(localCards);
+        }
+
+        // 2. Try Syncing with Server
+        if (status === "authenticated") {
+            setSaveStatus("saving");
             const res = await fetch("/api/board/sync");
-            const data = await res.json();
-            if (data.cards?.length > 0) {
-                setCards(data.cards); lastSavedString.current = JSON.stringify(data.cards);
-                setSaveStatus("saved"); setLastSavedTime(formatDate(data.updatedAt));
-                saveState(data.cards);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.cards && data.cards.length > 0) {
+                    // Server data takes priority if it exists
+                    setCards(data.cards);
+                    lastSavedString.current = JSON.stringify(data.cards);
+                    setSaveStatus("saved");
+                    setLastSavedTime(formatDate(data.updatedAt));
+                    saveState(data.cards); // Update local to match server
+                }
             }
-        } catch (e) { console.error(e); setSaveStatus("error"); }
-      } else { setTimeout(() => setShowLoginNudge(true), 2000); }
-      setHistoryList(getHistory()); setIsLoaded(true);
+        } else if (status === "unauthenticated") {
+             setTimeout(() => setShowLoginNudge(true), 2000);
+        }
+      } catch (e) {
+        console.error("Board Initialization Error:", e);
+        setSaveStatus("error");
+      } finally {
+        // 3. CRITICAL: Always release the loading screen
+        setIsLoaded(true); 
+      }
     }
+
     if (status !== "loading") initBoard();
   }, [status]);
 
-  // --- ACTIONS ---
-
-  // *** NEW: SMART SPAWN LOGIC ***
+  // Actions
   const findSmartPosition = () => {
-    if (typeof window === 'undefined') return { x: 0, y: 0 };
-    
-    const centerX = window.innerWidth / 2 - 140; // Center minus half card width
-    const centerY = window.innerHeight / 2 - 190; // Center minus half card height
-    
-    // If empty, start dead center
-    if (cards.length === 0) return { x: centerX, y: centerY };
+      // Adjusted for Viewport: We want to spawn near the center of the CURRENT VIEW, not just (0,0)
+      // Reverse calculate screen center to board coordinates
+      if (typeof window === 'undefined') return { x: 0, y: 0 };
+      
+      const screenCx = (window.innerWidth / 2 - view.x) / view.scale;
+      const screenCy = (window.innerHeight / 2 - view.y) / view.scale;
+      
+      if (cards.length === 0) return { x: screenCx - 140, y: screenCy - 190 };
 
-    // Spiral Algorithm
-    let angle = 0;
-    let radius = 50;
-    const collisionThreshold = 200; // Minimum distance between cards
-
-    for (let i = 0; i < 50; i++) { // Try 50 times
-        const x = centerX + radius * Math.cos(angle);
-        const y = centerY + radius * Math.sin(angle);
-
-        // Check collision with ALL existing cards
-        const hasCollision = cards.some(card => {
-            const dist = Math.sqrt(Math.pow(card.x - x, 2) + Math.pow(card.y - y, 2));
-            return dist < collisionThreshold;
-        });
-
-        if (!hasCollision) {
-            // Found a spot! Add a little random jitter so it's not perfect
-            return { 
-                x: x + (Math.random() - 0.5) * 20, 
-                y: y + (Math.random() - 0.5) * 20 
-            };
-        }
-
-        // Spiral out
-        angle += 1; // Increment angle (~57 degrees)
-        radius += 15; // Increment radius
-    }
-
-    // Fallback: Just put it near the last card + random
-    const last = cards[cards.length - 1];
-    return { x: last.x + 40, y: last.y + 40 };
+      // Simple jitter near center of screen
+      return { 
+          x: (screenCx - 140) + (Math.random() - 0.5) * 100, 
+          y: (screenCy - 190) + (Math.random() - 0.5) * 100
+      };
   };
 
   const addCard = () => {
@@ -165,8 +211,7 @@ export default function Board() {
   const updateCard = (id: string, newData: Partial<CardData>) => setCards((prevCards) => prevCards.map((c) => (c.id === id ? { ...c, ...newData } : c)));
   const deleteCard = (id: string) => setCards((prevCards) => prevCards.filter(c => c.id !== id));
   const restoreCheckpoint = (point: HistoryPoint) => {
-      const dateStr = formatDate(point.id);
-      if (confirm(`Restore checkpoint from ${dateStr}?`)) {
+      if (confirm(`Restore checkpoint from ${formatDate(point.id)}?`)) {
           setCards(point.cards); lastSavedString.current = ""; setShowHistory(false);
       }
   };
@@ -174,8 +219,56 @@ export default function Board() {
   if (!isLoaded) return <div className="w-full h-screen bg-[#F9F8F6]" />;
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-[#F9F8F6]" onPointerDown={() => setSelectedId(null)}>
-      <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+    <div 
+        className="relative w-full h-screen overflow-hidden bg-[#F9F8F6] cursor-crosshair" 
+        onPointerDown={(e) => {
+            handlePointerDown(e);
+            setSelectedId(null);
+        }}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onWheel={handleWheel}
+    >
+      {/* Background Pattern (Moves with View) */}
+      <div 
+        className="absolute inset-0 opacity-[0.03] pointer-events-none origin-top-left" 
+        style={{ 
+            backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', 
+            backgroundSize: '20px 20px',
+            transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` 
+        }}
+      />
+
+      {/* --- TRANSFORM CONTAINER (THE INFINITE CANVAS) --- */}
+      <motion.div 
+        className="absolute top-0 left-0 w-full h-full origin-top-left"
+        style={{ 
+            x: view.x, 
+            y: view.y, 
+            scale: view.scale 
+        }}
+        transition={{ type: "tween", ease: "linear", duration: 0 }} // Instant update for drag
+      >
+          {cards.map((card) => (
+            <VisionCard key={card.id} card={card} isSelected={selectedId === card.id} updateCard={updateCard} onDelete={deleteCard} onSelect={(e) => { e.stopPropagation(); setSelectedId(card.id); }} />
+          ))}
+      </motion.div>
+
+
+      {/* --- UI OVERLAYS (Fixed Position) --- */}
+      
+      {/* Zoom Controls (Bottom Left) */}
+      <div className="absolute bottom-6 left-6 flex gap-2 z-50">
+        <div className="bg-white border border-stone-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
+            <button onClick={zoomIn} className="p-2 hover:bg-stone-50 text-stone-600 border-b border-stone-100"><Plus size={16}/></button>
+            <button onClick={zoomOut} className="p-2 hover:bg-stone-50 text-stone-600"><Minus size={16}/></button>
+        </div>
+        <div className="bg-white/80 backdrop-blur border border-stone-200 rounded-lg px-3 flex items-center text-xs font-mono font-bold text-stone-500 shadow-sm">
+            {Math.round(view.scale * 100)}%
+        </div>
+      </div>
+
+      <OnboardingModal />
 
       {/* TOP BAR */}
       <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-start z-50 pointer-events-none select-none">
@@ -234,10 +327,6 @@ export default function Board() {
             </button>
         </div>
       </div>
-
-      {cards.map((card) => (
-        <VisionCard key={card.id} card={card} isSelected={selectedId === card.id} updateCard={updateCard} onDelete={deleteCard} onSelect={(e) => { e.stopPropagation(); setSelectedId(card.id); }} />
-      ))}
     </div>
   );
 }

@@ -2,13 +2,18 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { HelpCircle, X, Youtube, Mail, MessageCircle, Heart, ExternalLink } from "lucide-react";
+import { 
+    HelpCircle, X, Youtube, Mail, MessageCircle, Heart, ExternalLink,
+    MousePointer2, Move, RefreshCw 
+} from "lucide-react";
 
-type Tab = 'what' | 'why' | 'how' | 'feedback';
+type Tab = 'what' | 'why' | 'how' | 'controls' | 'feedback';
 
 export default function HelpModal() {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('what');
+  // Animation variants (Reused from Onboarding)
+  const float = { animate: { y: [0, -5, 0], transition: { duration: 2, repeat: Infinity } } };
 
   // --- CONTENT CONFIGURATION ---
   const CONTENT = {
@@ -78,6 +83,63 @@ export default function HelpModal() {
           </p>
         </div>
       )
+    },
+    controls: {
+        title: "Tutorial & Controls",
+        body: (
+            <div className="space-y-6">
+                {/* 1. Move & Interact */}
+                <div className="flex gap-4 items-start p-4 bg-stone-50 rounded-xl border border-stone-100">
+                    <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-blue-600 shrink-0 shadow-sm">
+                        <motion.div variants={float} animate="animate"><MousePointer2 size={18} /></motion.div>
+                    </div>
+                    <div>
+                        <h3 className="text-sm font-bold text-stone-900">Move & Edit</h3>
+                        <p className="text-xs text-stone-500 leading-relaxed mt-1">
+                            <strong className="text-stone-700">Click & Drag</strong> any card to move it. 
+                            Use the white handles to <strong className="text-stone-700">Rotate</strong> or <strong className="text-stone-700">Resize</strong>.
+                        </p>
+                    </div>
+                </div>
+
+                {/* 2. Flip */}
+                <div className="flex gap-4 items-start p-4 bg-stone-50 rounded-xl border border-stone-100">
+                    <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-purple-600 shrink-0 shadow-sm">
+                        <motion.div animate={{ rotateY: [0, 180, 360] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}>
+                            <RefreshCw size={18} />
+                        </motion.div>
+                    </div>
+                    <div>
+                        <h3 className="text-sm font-bold text-stone-900">Double Click to Flip</h3>
+                        <p className="text-xs text-stone-500 leading-relaxed mt-1">
+                            Flip a card to access its <strong className="text-stone-700">Reflection Journal</strong>. The right-click menu automatically switches tabs when you flip.
+                        </p>
+                    </div>
+                </div>
+
+                {/* 3. Infinite Canvas */}
+                <div className="flex gap-4 items-start p-4 bg-stone-50 rounded-xl border border-stone-100">
+                    <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-orange-600 shrink-0 shadow-sm">
+                        <Move size={18} />
+                    </div>
+                    <div>
+                        <h3 className="text-sm font-bold text-stone-900">Infinite Canvas</h3>
+                        <div className="mt-2 space-y-2">
+                             <div className="flex items-center gap-2">
+                                <span className="bg-white px-1.5 py-0.5 rounded border border-stone-200 font-mono text-[10px] text-stone-600 font-bold shadow-sm">Middle Click</span>
+                                <span className="text-[10px] text-stone-400">or</span>
+                                <span className="bg-white px-1.5 py-0.5 rounded border border-stone-200 font-mono text-[10px] text-stone-600 font-bold shadow-sm">Ctrl + Drag</span>
+                                <span className="text-xs text-stone-600">= Pan View</span>
+                             </div>
+                             <div className="flex items-center gap-2">
+                                <span className="bg-white px-1.5 py-0.5 rounded border border-stone-200 font-mono text-[10px] text-stone-600 font-bold shadow-sm">Ctrl + Scroll</span>
+                                <span className="text-xs text-stone-600">= Zoom In/Out</span>
+                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )
     },
     feedback: {
       title: "Feedback",
@@ -162,7 +224,7 @@ export default function HelpModal() {
               <div className="flex flex-col md:flex-row h-full overflow-hidden">
                   {/* SIDEBAR TABS */}
                   <div className="w-full md:w-48 bg-stone-50 border-r border-stone-100 flex flex-row md:flex-col p-2 gap-1 shrink-0 overflow-x-auto md:overflow-visible">
-                      {(['what', 'why', 'how', 'feedback'] as Tab[]).map((tab) => (
+                      {(['what', 'why', 'how', 'controls', 'feedback'] as Tab[]).map((tab) => (
                           <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}

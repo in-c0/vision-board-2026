@@ -6,7 +6,18 @@ import { X, GitCommit, ScrollText } from "lucide-react";
 
 // --- CHANGELOG DATA ---
 const CHANGELOG = [
-  // Insert this at the top of the CHANGELOG array
+  {
+    version: "v0.06",
+    date: "Jan 08, 2026",
+    title: "Infinite Canvas & Onboarding",
+    description: "The board is no longer static. You can now explore an infinite space to map your vision.",
+    features: [
+      "Pan & Zoom: Hold Ctrl and scroll to zoom. Middle-click (or Ctrl+Click) and drag to pan around.",
+      "Smart Spawn: New cards now appear near the center of your current view, respecting your zoom level.",
+      "Onboarding: A new visual guide welcomes first-time users, explaining the hidden power features.",
+      "Persistence: Zoom level and pan position are reset on reload to keep things centered (for now)."
+    ]
+  },
   {
     version: "v0.05",
     date: "Jan 03, 2026",

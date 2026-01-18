@@ -150,14 +150,14 @@ export default function HelpModal() {
             </p>
             
             <div className="grid grid-cols-1 gap-3">
-                <a href="#" className="flex items-center gap-3 p-3 bg-indigo-50 hover:bg-indigo-100 rounded-lg text-indigo-900 transition-colors border border-indigo-100">
+                <a href="https://discord.gg/4jVFyNqPGf" className="flex items-center gap-3 p-3 bg-indigo-50 hover:bg-indigo-100 rounded-lg text-indigo-900 transition-colors border border-indigo-100">
                     <div className="p-2 bg-white rounded-md shadow-sm text-indigo-600"><MessageCircle size={18}/></div>
                     <div className="flex flex-col">
                         <span className="font-bold text-xs">Join Discord</span>
                         <span className="text-[10px] opacity-70">Community & Discussion</span>
                     </div>
                 </a>
-                <a href="mailto:hello@visionboard.co" className="flex items-center gap-3 p-3 bg-stone-50 hover:bg-stone-100 rounded-lg text-stone-900 transition-colors border border-stone-200">
+                <a href="mailto:vibo@lifeos.studio" className="flex items-center gap-3 p-3 bg-stone-50 hover:bg-stone-100 rounded-lg text-stone-900 transition-colors border border-stone-200">
                     <div className="p-2 bg-white rounded-md shadow-sm text-stone-600"><Mail size={18}/></div>
                     <div className="flex flex-col">
                         <span className="font-bold text-xs">Email Us</span>

@@ -1,16 +1,13 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL") // You will get this from Supabase/Vercel
+  url      = env("DATABASE_URL")
 }
 
 // NextAuth User Models
@@ -61,10 +58,23 @@ model VerificationToken {
 }
 
 // --- YOUR APP DATA ---
+
 model Board {
   id        String   @id @default(cuid())
   userId    String   @unique
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  content   Json     // Stores your Cards array
+  content   Json     // Stores your "Live" Cards array
   updatedAt DateTime @updatedAt
+
+  // NEW: Relation to history snapshots
+  history   BoardHistory[] 
+}
+
+// NEW: Stores past versions of the board
+model BoardHistory {
+  id        String   @id @default(cuid())
+  boardId   String
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  content   Json     // Stores the snapshot of cards
+  createdAt DateTime @default(now())
 }

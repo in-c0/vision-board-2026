@@ -22,17 +22,17 @@ export default function HelpModal() {
       body: (
         <div className="space-y-4 text-sm text-stone-600 leading-relaxed">
           <p>
-            <strong className="text-stone-900">This space is about creating your Vision Board.</strong>
+            <strong className="text-stone-900">This is where your Vision Board lives on the web.</strong>
           </p>
           <p>
-            A Vision Board is a personalized roadmap that helps you clarify what you want and inspires you to take steps towards achieving it. It can be a collection of images, quotes, affirmations, and ideas.
+            A Vision Board is a personalized roadmap that helps you clarify what you want and inspires you to take steps towards achieving it.
           </p>
           <p>
-            A great thing about making a vision board here (digitally) is you can also add images or even videos from Pinterest, or log in with your Google account to save histories so you can see how your vision evolves over time.
+            You can log in with your Google account to save histories (Ctrl+S) and access your board from any device.
           </p>
           <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-xl">
             <p className="text-xs text-blue-800 font-medium">
-               ✨ Plus, you can use templates and add-ons created by communities. For example, <span className="underline decoration-dotted cursor-help" title="Feature coming soon!">play clubhouse music and dance floor</span> to add flow to your vision board. (Trust me, it's gonna change how you think/feel about your future!)
+               ✨ Plus, you can use templates and add-ons created by communities. For example, <span className="underline decoration-dotted cursor-help" title="Feature coming soon!">sync your Spotify and play clubhouse music</span> to add flow to your vision board.
             </p>
           </div>
         </div>
@@ -43,18 +43,18 @@ export default function HelpModal() {
       body: (
         <div className="space-y-4 text-sm text-stone-600 leading-relaxed">
           <p>
-            Vision boards aren't magic, but they are <strong className="text-stone-900">evidence-based tools leveraging psychology</strong>: they use visualization (strengthening neural pathways), priming (making you notice opportunities), and repetition (reducing fear of new actions) to boost focus, motivation, and goal attainment.
+            Vision boards are <strong className="text-stone-900">evidence-based tools leveraging psychology</strong>: they use visualization (strengthening neural pathways), priming (making you notice opportunities), and repetition (reducing fear of new actions) to boost focus, motivation, and goal attainment.
           </p>
           <p>
-            Similar to how athletes train mentally; success hinges on pairing the visuals with concrete action and aligning goals with your values, not just fantasy.
+            Similar to how athletes train mentally; success hinges on pairing the visuals with concrete action and aligning goals with your values.
           </p>
           
           <div className="mt-6">
             <h4 className="text-xs font-bold text-stone-900 uppercase tracking-wider mb-3">The Science of Vision Boards</h4>
             <div className="grid gap-2">
-                <VideoLink title="Neuroscience of Visualization (Dr. Tara Swart)" url="https://www.youtube.com/watch?v=id55BKWLZKM" duration="15 min" />
-                <VideoLink title="Why Vision Boards Work (Mel Robbins)" url="https://youtu.be/ZJDOEFmTy0E?t=109" duration="10 min" />
-                <VideoLink title="Quick Primer: Vision Board Psychology" url="https://youtube.com/shorts/h4XPNq5Y1Ks?si=UT3LlfHaDlZipDLn" duration="60 sec" />
+                <VideoLink title="Neuroscience of Visualization (Dr. Tara Swart)" url="https://www.youtube.com/watch?v=id55BKWLZKM" duration="3 min" />
+                <VideoLink title="Why Vision Boards Work (Mel Robbins)" url="https://youtu.be/ZJDOEFmTy0E?t=109" duration="8 min" />
+                <VideoLink title="Quick Primer: Vision Board Psychology" url="https://youtube.com/shorts/h4XPNq5Y1Ks?si=UT3LlfHaDlZipDLn" duration="30 sec" />
             </div>
           </div>
         </div>
@@ -146,7 +146,7 @@ export default function HelpModal() {
       body: (
         <div className="space-y-6 text-sm text-stone-600 leading-relaxed">
             <p>
-                <strong>LifeOS Studio</strong> is evolving with the communities, and your feedback matters.
+                <strong>We are evolving with the community</strong>, and your feedback matters here.
             </p>
             
             <div className="grid grid-cols-1 gap-3">
@@ -175,7 +175,7 @@ export default function HelpModal() {
 
             <div className="pt-4 border-t border-stone-100 text-center">
                 <p className="flex items-center justify-center gap-1 text-xs font-serif italic text-stone-400">
-                    Thank you for using our Vision Board <Heart size={10} className="fill-red-400 text-red-400" />
+                    Thank you for being part of our community<Heart size={10} className="fill-red-400 text-red-400" />
                 </p>
             </div>
         </div>

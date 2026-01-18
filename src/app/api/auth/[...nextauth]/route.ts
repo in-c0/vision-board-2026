@@ -1,3 +1,5 @@
+// vision-board-2026\src\app\api\auth\[...nextauth]\route.ts
+
 import NextAuth, { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";

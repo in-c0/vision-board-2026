@@ -64,16 +64,13 @@ export default function Board() {
 
   // --- 2. CLOUD SAVE LOGIC ---
   const triggerSave = useCallback(async () => {
-    // 1. Guest Check
     if (status !== "authenticated") {
         setSaveStatus("unsaved");
         setShowLoginNudge(true);
         return;
     }
-
-    // 2. STRESS TEST FIX: Prevent double-clicking or spamming
-    // If we are already saving, ignore this request
     if (saveStatus === "saving") return; 
+
     setSaveStatus("saving");
     try {
         const res = await fetch("/api/board/sync", { method: "POST", body: JSON.stringify({ cards }) });
@@ -87,7 +84,7 @@ export default function Board() {
     } catch (e) { 
         setSaveStatus("error"); 
     }
-  }, [cards, status]);
+  }, [cards, status, saveStatus]);
 
   // --- 3. EFFECTS ---
   useEffect(() => {
@@ -142,7 +139,7 @@ export default function Board() {
     const { x, y } = findSmartPosition();
     const newCard: CardData = {
       id: Math.random().toString(36).substr(2, 9), type: "text", x, y, width: 280, height: 380, rotation: (Math.random() - 0.5) * 16, 
-      content: { frontText: "", backReflection: { identity: "", practice: "" }, style: { opacity: 1, fontSize: 32, fontFamily: 'font-serif', fontWeight: 'normal', fontStyle: 'italic', textColor: '#292524' } }, isFlipped: false,
+      content: { frontText: "New Intention", backReflection: { identity: "", practice: "" }, style: { opacity: 1, fontSize: 32, fontFamily: 'font-serif', fontWeight: 'normal', fontStyle: 'italic', textColor: '#292524' } }, isFlipped: false,
     };
     setCards([...cards, newCard]);
     setSelectedId(newCard.id);
@@ -161,7 +158,6 @@ export default function Board() {
   
   const restoreCheckpoint = (point: HistoryPoint) => {
       if (confirm(`Revert board to ${formatDate(point.createdAt)}? Unsaved changes will be lost.`)) {
-          // SAFETY: Check if content is valid array
           const restoredCards = Array.isArray(point.content) ? point.content as CardData[] : [];
           setCards(restoredCards);
           lastSavedString.current = JSON.stringify(restoredCards);
@@ -170,15 +166,26 @@ export default function Board() {
       }
   };
 
+  // NEW LOADING SCREEN WITH LOGO
   if (!isLoaded) return (
-    <div className="w-full h-screen bg-[#F9F8F6] flex flex-col items-center justify-center text-stone-400 gap-4">
-        <Loader2 size={48} className="animate-spin text-stone-300" />
-        <p className="text-sm font-medium animate-pulse">Loading your vision...</p>
+    <div className="w-full h-screen bg-[#F9F8F6] flex flex-col items-center justify-center gap-6">
+        {/* LOGO: Ensure 'logo.png' is in your /public folder */}
+        <motion.img 
+            initial={{ opacity: 0, scale: 0.9 }} 
+            animate={{ opacity: 1, scale: 1 }} 
+            src="/logo.png" 
+            alt="ViBo Logo" 
+            className="w-200 h-200 object-contain"
+        />
+        <div className="flex flex-col items-center gap-2">
+            <Loader2 size={24} className="animate-spin text-stone-300" />
+            <p className="text-xs font-medium text-stone-400 animate-pulse tracking-widest uppercase">Initializing ViBo...</p>
+        </div>
     </div>
   );
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-[#F9F8F6] cursor-crosshair touch-none"
+    <div className="relative w-full h-screen overflow-hidden bg-[#F9F8F6] cursor-crosshair touch-none" 
         onPointerDown={(e) => { handlePointerDown(e); setSelectedId(null); }}
         onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onWheel={handleWheel}
     >
@@ -190,19 +197,16 @@ export default function Board() {
           ))}
       </motion.div>
 
-      {/* GUEST WARNING BANNER */}
+      {/* GUEST BANNER */}
       <AnimatePresence>
         {status === "unauthenticated" && (
             <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
                 className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-stone-900/90 text-white px-4 py-2 rounded-full shadow-lg backdrop-blur flex items-center gap-3"
             >
                 <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
-                <span className="text-xs font-medium">Guest Mode: Data not saved to cloud</span>
-                <button onClick={() => signIn('google')} className="text-xs font-bold underline hover:text-orange-200">
-                    Log In
-                </button>
+                <span className="text-xs font-medium">Guest Mode: Data not saved</span>
+                <button onClick={() => signIn('google')} className="text-xs font-bold underline hover:text-orange-200">Log In</button>
             </motion.div>
         )}
       </AnimatePresence>
@@ -219,7 +223,8 @@ export default function Board() {
 
       <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-start z-50 pointer-events-none select-none">
         <div className="pointer-events-auto flex flex-col items-start gap-1">
-            <h1 className="text-xl font-serif text-stone-800 tracking-tight">2026 Vision</h1>
+            {/* UPDATED TITLE */}
+            <h1 className="text-xl font-serif text-stone-800 tracking-tight font-bold">ViBo</h1>
             
             <div className="relative flex gap-1">
                 <button onClick={triggerSave} className={`flex items-center gap-2 text-xs transition-all bg-white/50 px-2 py-1.5 rounded-l-md border border-stone-200/50 hover:bg-white hover:border-stone-300 ${status === 'unauthenticated' ? 'opacity-70' : ''}`}>
@@ -245,7 +250,6 @@ export default function Board() {
                             {status === 'authenticated' && historyList.map((point) => (
                                 <button key={point.id} onClick={() => restoreCheckpoint(point)} className="w-full text-left px-3 py-2.5 text-xs text-stone-600 hover:bg-blue-50 hover:text-blue-600 flex justify-between border-b border-stone-50 last:border-0 group">
                                     <span className="font-medium group-hover:translate-x-1 transition-transform">{formatDate(point.createdAt)}</span>
-                                    {/* SAFETY CHECK HERE */}
                                     <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded-full">
                                         {Array.isArray(point.content) ? point.content.length : 0} items
                                     </span>

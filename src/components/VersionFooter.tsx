@@ -7,6 +7,19 @@ import { X, GitCommit, ScrollText } from "lucide-react";
 // --- CHANGELOG DATA ---
 const CHANGELOG = [
   {
+    version: "v0.8.0",
+    date: "Jan 18, 2026",
+    title: "ViBo Rebrand & Cloud History",
+    description: "Major stability overhaul. We moved the 'Time Travel' history from your browser to the Cloud, preventing crashes and allowing cross-device undo.",
+    features: [
+      "Cloud History: History snapshots are now stored in the database (last 20 versions), removing the 5MB browser limit.",
+      "ViBo Branding: Renamed to ViBo with a polished loading screen and logo integration.",
+      "Crash Protection: Added image size limits (2MB) and 'Spam-Save' locks to prevent network congestion.",
+      "Mobile Zen: Added 'touch-none' support so you can drag cards on mobile without scrolling the entire page.",
+      "Guest Mode: Added clear warning banners for unauthenticated users."
+    ]
+  },
+  {
     version: "v0.06",
     date: "Jan 08, 2026",
     title: "Infinite Canvas & Onboarding",
@@ -92,7 +105,7 @@ export default function VersionFooter() {
           onClick={() => setIsOpen(true)}
           className="group flex items-center gap-2 px-3 py-1.5 bg-white/80 backdrop-blur-md border border-stone-200 rounded-full shadow-sm hover:shadow-md hover:border-stone-300 transition-all"
         >
-          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+          <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
           <span className="text-xs font-mono font-medium text-stone-600 group-hover:text-stone-900">
             {CHANGELOG[0].version}
           </span>
@@ -127,7 +140,7 @@ export default function VersionFooter() {
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-stone-800">Update Log</h2>
-                    <p className="text-[10px] text-stone-500 font-medium">Project History</p>
+                    <p className="text-[10px] text-stone-500 font-medium">ViBo History</p>
                   </div>
                 </div>
                 <button
@@ -144,11 +157,11 @@ export default function VersionFooter() {
                   {CHANGELOG.map((log, index) => (
                     <div key={index} className="relative pl-8">
                       {/* Timeline Dot */}
-                      <div className="absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full bg-stone-900 ring-4 ring-white" />
+                      <div className={`absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full ring-4 ring-white ${index === 0 ? 'bg-blue-600' : 'bg-stone-300'}`} />
                       
                       <div className="flex flex-col gap-1 mb-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-stone-900 bg-stone-100 px-2 py-0.5 rounded text-mono">
+                          <span className={`text-sm font-bold px-2 py-0.5 rounded text-mono ${index === 0 ? 'bg-blue-50 text-blue-900' : 'bg-stone-100 text-stone-900'}`}>
                             {log.version}
                           </span>
                           <span className="text-xs text-stone-400 font-medium">
@@ -180,7 +193,7 @@ export default function VersionFooter() {
               {/* Footer CTA */}
               <div className="p-4 bg-stone-50 border-t border-stone-100 text-center">
                 <p className="text-[10px] text-stone-400">
-                   Vision Board 2026 • Building in Public
+                   ViBo v0.8.0 • Building in Public
                 </p>
               </div>
             </motion.div>

@@ -52,11 +52,11 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
 
   // --- NEW: REACTIVE BEHAVIORS ---
 
-  // 1. Auto-Close Menu when deselected (user clicks elsewhere)
+  // 1. Auto-Close Menu when deselected
   useEffect(() => {
     if (!isSelected) {
         setShowMenu(false);
-        setMenuMode('main'); // Reset to main view
+        setMenuMode('main'); 
     }
   }, [isSelected]);
 
@@ -68,23 +68,24 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
 
   // --- HANDLERS ---
 
-  // Context Menu Handler (Right Click)
   const handleContextMenu = (e: React.MouseEvent) => {
       e.preventDefault(); 
       e.stopPropagation(); 
-      
       setShowMenu(true);
-      
-      // 3. Context-Aware Tab Opening
-      // If card is currently flipped, open Backside tab. Else Visuals.
       setMenuTab(card.isFlipped ? 'backside' : 'visuals');
-
       if (!isSelected) onSelect(e as unknown as React.PointerEvent);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+        // STRESS TEST FIX: Limit image size to 2MB
+        if (file.size > 2 * 1024 * 1024) {
+            alert("Image is too large! Please choose an image under 2MB.");
+            e.target.value = ''; 
+            return;
+        }
+
         const reader = new FileReader();
         reader.onloadend = () => {
             const base64String = reader.result as string;
@@ -132,7 +133,15 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
   return (
     <>
     <motion.div
-      style={{ width: card.width, height: card.height, left: card.x, top: card.y, x: "-50%", y: "-50%", rotate: card.rotation, zIndex: showMenu ? 40 : (isSelected || isInteracting.current ? 30 : 10), position: 'absolute' }}
+      style={{ 
+        width: card.width || 300, 
+        height: card.height || 400, 
+        left: card.x, top: card.y, 
+        x: "-50%", y: "-50%", 
+        rotate: card.rotation, 
+        zIndex: showMenu ? 40 : (isSelected || isInteracting.current ? 30 : 10), 
+        position: 'absolute' 
+      }}
       onPointerDown={handleDragStart} 
       onContextMenu={handleContextMenu}
       initial={false}
@@ -147,7 +156,8 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
         )}
 
         <motion.div
-          className="w-full h-full relative preserve-3d"
+          // FIXED: CSS Arbitrary Values for 3D
+          className="w-full h-full relative [transform-style:preserve-3d]"
           animate={{ rotateY: card.isFlipped ? 180 : 0 }}
           transition={{ type: "spring", stiffness: 260, damping: 20 }}
           onDoubleClick={(e) => {
@@ -158,7 +168,7 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
           }}
         >
           {/* FRONT */}
-          <div className="absolute inset-0 backface-hidden w-full h-full bg-stone-50 rounded-2xl shadow-xl overflow-hidden border border-stone-200 flex flex-col select-none">
+          <div className="absolute inset-0 [backface-visibility:hidden] w-full h-full bg-stone-50 rounded-2xl shadow-xl overflow-hidden border border-stone-200 flex flex-col select-none">
             {card.content.frontVideoUrl ? (
                 <video src={card.content.frontVideoUrl} poster={card.content.frontUrl} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover pointer-events-none z-0" style={{ opacity: style.opacity }} />
             ) : card.content.frontUrl ? (
@@ -172,7 +182,7 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
           </div>
 
           {/* BACK */}
-          <div className="absolute inset-0 backface-hidden w-full h-full bg-white rounded-2xl shadow-inner border-2 border-stone-100 p-5 flex flex-col" style={{ transform: "rotateY(180deg)" }}>
+          <div className="absolute inset-0 [backface-visibility:hidden] w-full h-full bg-white rounded-2xl shadow-inner border-2 border-stone-100 p-5 flex flex-col" style={{ transform: "rotateY(180deg)" }}>
              <div className="flex-1 overflow-y-auto flex flex-col gap-3 scrollbar-thin scrollbar-thumb-stone-200 scrollbar-track-transparent pr-1 cursor-text select-text stop-drag" onPointerDown={(e) => { e.stopPropagation(); }}>
                 <div className="flex flex-col gap-1">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-stone-900 select-none">{currentTemplate.q1}</label>
@@ -206,7 +216,7 @@ export default function VisionCard({ card, isSelected, onSelect, updateCard, onD
                 <button onPointerDown={(e) => e.stopPropagation()} onClick={() => { setShowMenu(false); setMenuMode('main'); }} className="text-stone-400 hover:text-stone-700"><X size={16}/></button>
             </div>
 
-            {/* TAB SWITCHER (Controlled by State) */}
+            {/* TAB SWITCHER */}
             {menuMode === 'main' && (
                 <div className="flex border-b border-stone-100">
                     <button onClick={() => setMenuTab('visuals')} className={`flex-1 py-2 text-xs font-bold transition-colors ${menuTab === 'visuals' ? 'text-stone-900 border-b-2 border-stone-900 bg-white' : 'text-stone-400 bg-stone-50 hover:bg-stone-100'}`}>Visuals</button>

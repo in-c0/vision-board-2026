@@ -64,12 +64,16 @@ export default function Board() {
 
   // --- 2. CLOUD SAVE LOGIC ---
   const triggerSave = useCallback(async () => {
+    // 1. Guest Check
     if (status !== "authenticated") {
         setSaveStatus("unsaved");
         setShowLoginNudge(true);
         return;
     }
 
+    // 2. STRESS TEST FIX: Prevent double-clicking or spamming
+    // If we are already saving, ignore this request
+    if (saveStatus === "saving") return; 
     setSaveStatus("saving");
     try {
         const res = await fetch("/api/board/sync", { method: "POST", body: JSON.stringify({ cards }) });
@@ -174,7 +178,7 @@ export default function Board() {
   );
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-[#F9F8F6] cursor-crosshair" 
+    <div className="relative w-full h-screen overflow-hidden bg-[#F9F8F6] cursor-crosshair touch-none"
         onPointerDown={(e) => { handlePointerDown(e); setSelectedId(null); }}
         onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onWheel={handleWheel}
     >
@@ -185,6 +189,23 @@ export default function Board() {
             <VisionCard key={card.id} card={card} isSelected={selectedId === card.id} updateCard={updateCard} onDelete={deleteCard} onSelect={(e) => { e.stopPropagation(); setSelectedId(card.id); }} />
           ))}
       </motion.div>
+
+      {/* GUEST WARNING BANNER */}
+      <AnimatePresence>
+        {status === "unauthenticated" && (
+            <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-stone-900/90 text-white px-4 py-2 rounded-full shadow-lg backdrop-blur flex items-center gap-3"
+            >
+                <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
+                <span className="text-xs font-medium">Guest Mode: Data not saved to cloud</span>
+                <button onClick={() => signIn('google')} className="text-xs font-bold underline hover:text-orange-200">
+                    Log In
+                </button>
+            </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="absolute bottom-6 left-6 flex gap-2 z-50">
         <div className="bg-white border border-stone-200 rounded-lg shadow-sm flex flex-col overflow-hidden">

@@ -46,7 +46,7 @@ model User {
   image         String?
   accounts      Account[]
   sessions      Session[]
-  board         Board?    // Link to their Vision Board
+  boards        Board[]
 }
 
 model VerificationToken {
@@ -61,16 +61,15 @@ model VerificationToken {
 
 model Board {
   id        String   @id @default(cuid())
-  userId    String   @unique
+  userId    String   // CHANGED: Removed "@unique" to allow multiple boards per user
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  content   Json     // Stores your "Live" Cards array
+  title     String   @default("Untitled Board") // NEW: Name of the board
+  content   Json     // Stores Cards
   updatedAt DateTime @updatedAt
 
-  // NEW: Relation to history snapshots
   history   BoardHistory[] 
 }
 
-// NEW: Stores past versions of the board
 model BoardHistory {
   id        String   @id @default(cuid())
   boardId   String

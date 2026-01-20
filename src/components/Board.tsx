@@ -6,17 +6,20 @@ import VisionCard from "./VisionCard";
 import HelpModal from "./HelpModal";
 import OnboardingModal from "./OnboardingModal"; 
 import { CardData } from "@/types/board";
+import { motion, AnimatePresence } from "framer-motion";
 import { 
     Plus, Minus, Loader2, Cloud, CloudOff, X, User, LogIn, History, 
-    Layout, ChevronLeft, ChevronRight, Trash2, AlertTriangle, Menu
-} from "lucide-react"; 
-import { motion, AnimatePresence } from "framer-motion";
+    Layout, ChevronLeft, ChevronRight, Trash2, Menu, Users, Edit2, Check, AlertTriangle
+} from "lucide-react";
 
 interface HistoryPoint {
   id: string; createdAt: string; content: any;
 }
 interface BoardMeta {
   id: string; title: string; updatedAt: string;
+}
+interface Friend {
+  id: string; name: string; image: string; role: string;
 }
 
 const GUEST_STORAGE_KEY = "vibo_guest_data";
@@ -33,15 +36,25 @@ const STARTER_BOARDS = [
 export default function Board() {
   const { data: session, status } = useSession();
   const [isLoaded, setIsLoaded] = useState(false);
-  const [isLoadingBoard, setIsLoadingBoard] = useState(false); // New Loading State
+  const [isLoadingBoard, setIsLoadingBoard] = useState(false);
   
   // Board State
   const [cards, setCards] = useState<CardData[]>([]);
   const [boards, setBoards] = useState<BoardMeta[]>([]);
   const [activeBoardId, setActiveBoardId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false); // Default closed for cleaner UI
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   
+  // --- NEW: RENAME STATE ---
+  const [editingBoardId, setEditingBoardId] = useState<string | null>(null);
+  const [editTitleInput, setEditTitleInput] = useState("");
+
+  // Social State
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [viewingFriend, setViewingFriend] = useState<Friend | null>(null);
+  const [friendBoards, setFriendBoards] = useState<any[]>([]);
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
+
   // Viewport
   const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
   const isPanning = useRef(false);
@@ -60,7 +73,6 @@ export default function Board() {
   // --- API ACTIONS ---
   
   const fetchBoardList = async () => {
-      // GUEST MODE: Fake the board list
       if (status !== 'authenticated') {
           const localData = localStorage.getItem(GUEST_STORAGE_KEY);
           if (localData) {
@@ -70,8 +82,6 @@ export default function Board() {
           }
           return [];
       }
-
-      // AUTH MODE: Fetch real list
       const res = await fetch("/api/board/sync"); 
       if (res.ok) {
           const data = await res.json();
@@ -82,21 +92,19 @@ export default function Board() {
   };
 
   const loadBoard = async (id: string) => {
-      // Handle Guest Board Click
-      if (id === GUEST_BOARD_ID) return; // Already loaded
-
+      if (id === GUEST_BOARD_ID) return;
       if (saveStatus === "unsaved") {
           if (!confirm("You have unsaved changes. Leave this page?")) return;
       }
 
-      setIsLoadingBoard(true); // START LOADING
-      setSidebarOpen(false);   // Auto-close sidebar on mobile/desktop selection
+      setIsLoadingBoard(true);
+      setSidebarOpen(false); 
 
       try {
         const res = await fetch(`/api/board/sync?id=${id}`);
         if (res.ok) {
             const data = await res.json();
-            // Artificial delay to show the nice loading screen (optional, remove for speed)
+            // Artificial delay for UX
             await new Promise(r => setTimeout(r, 500)); 
             
             setCards(data.content || []);
@@ -105,6 +113,9 @@ export default function Board() {
             lastSavedString.current = JSON.stringify(data.content || []);
             setSaveStatus("saved");
             setLastSavedTime(formatDate(data.updatedAt));
+            
+            // Exit spectator mode if we were viewing a friend
+            setViewingFriend(null);
         } else {
             setSaveStatus("error");
         }
@@ -112,7 +123,7 @@ export default function Board() {
           console.error(e); 
           setSaveStatus("error"); 
       } finally {
-          setIsLoadingBoard(false); // STOP LOADING
+          setIsLoadingBoard(false);
       }
   };
 
@@ -139,6 +150,27 @@ export default function Board() {
       return null;
   };
 
+  // --- NEW: RENAME FUNCTION ---
+  const startRenaming = (e: React.MouseEvent, board: BoardMeta) => {
+      e.stopPropagation(); // Don't load the board when clicking edit
+      setEditingBoardId(board.id);
+      setEditTitleInput(board.title);
+  };
+
+  const saveRename = async (id: string) => {
+      if (!editTitleInput.trim()) return setEditingBoardId(null); // Cancel if empty
+
+      // Optimistic Update
+      setBoards(prev => prev.map(b => b.id === id ? { ...b, title: editTitleInput } : b));
+      setEditingBoardId(null);
+
+      await fetch("/api/board/sync", {
+          method: "POST",
+          body: JSON.stringify({ action: "rename", boardId: id, title: editTitleInput })
+      });
+      await fetchBoardList(); // Refresh to be sure
+  };
+
   const deleteBoard = async (id: string, e: React.MouseEvent) => {
       e.stopPropagation();
       if (!confirm("Are you sure? This board will be deleted forever.")) return;
@@ -157,9 +189,46 @@ export default function Board() {
       }
   };
 
+  // --- SOCIAL FUNCTIONS ---
+  const fetchFriends = async () => {
+      if (status !== 'authenticated') return;
+      const res = await fetch("/api/social");
+      if (res.ok) {
+          const data = await res.json();
+          setFriends(data.friends || []);
+      }
+  };
+
+  const selectFriend = async (friend: Friend) => {
+      const res = await fetch(`/api/board/sync?userId=${friend.id}`);
+      if (res.ok) {
+          const data = await res.json();
+          setFriendBoards(data.boards || []);
+          setViewingFriend(friend);
+          setRightSidebarOpen(true);
+      }
+  };
+
+  const loadFriendBoard = async (friend: Friend, boardId: string) => {
+      setIsLoadingBoard(true);
+      setViewingFriend(friend);
+      try {
+          const res = await fetch(`/api/board/sync?id=${boardId}&userId=${friend.id}`);
+          if (res.ok) {
+              const data = await res.json();
+              setCards(data.content || []);
+              setActiveBoardId(boardId);
+              // Hide History/Save status for spectators
+              setSaveStatus("saved"); 
+          }
+      } catch(e) { console.error(e); }
+      setIsLoadingBoard(false);
+  };
+
   // --- SAVE LOGIC ---
   const triggerSave = useCallback(async () => {
-    // A. Guest Save
+    if (viewingFriend) return; // Don't save if watching a friend's board
+
     if (status !== "authenticated") {
         if (typeof window !== "undefined") {
             localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(cards));
@@ -167,14 +236,11 @@ export default function Board() {
             const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             setLastSavedTime(time);
             lastSavedString.current = JSON.stringify(cards);
-            
-            // Update the fake "My Boards" list to reflect recent save
             setBoards([{ id: GUEST_BOARD_ID, title: "Guest Session", updatedAt: new Date().toISOString() }]);
         }
         return;
     }
 
-    // B. Cloud Save
     if (!activeBoardId) return; 
     if (saveStatus === "saving" || saveStatus === "limit_reached") return;
 
@@ -201,17 +267,17 @@ export default function Board() {
     } catch (e) { 
         setSaveStatus("error"); 
     }
-  }, [cards, status, saveStatus, activeBoardId]);
+  }, [cards, status, saveStatus, activeBoardId, viewingFriend]);
 
   // --- INIT LOGIC ---
   useEffect(() => {
     async function init() {
-      // 1. Load Local Guest Data
       let guestCards: CardData[] = [];
       const localData = localStorage.getItem(GUEST_STORAGE_KEY);
       if (localData) guestCards = JSON.parse(localData);
 
       if (status === "authenticated") {
+          fetchFriends();
           const remoteBoards = await fetchBoardList();
           
           if (guestCards.length > 0) {
@@ -225,11 +291,9 @@ export default function Board() {
               }
           } 
           else if (remoteBoards.length > 0) {
-              // Load the first board automatically
               loadBoard(remoteBoards[0].id);
           } 
           else {
-              // First time user setup
               await createBoard(STARTER_BOARDS[0]);
               for (let i = 1; i < STARTER_BOARDS.length; i++) {
                  fetch("/api/board/sync", { method: "POST", body: JSON.stringify({ action: "create", title: STARTER_BOARDS[i] }) });
@@ -237,7 +301,6 @@ export default function Board() {
               setTimeout(fetchBoardList, 1000);
           }
       } else {
-          // GUEST INITIALIZATION
           if (guestCards.length > 0) {
               setCards(guestCards);
               setBoards([{ id: GUEST_BOARD_ID, title: "Guest Session", updatedAt: new Date().toISOString() }]);
@@ -288,7 +351,7 @@ export default function Board() {
   const handleLogin = () => { if (cards.length > 0) localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(cards)); signIn('google'); };
 
   const findSmartPosition = () => { if (typeof window === 'undefined') return { x: 0, y: 0 }; const cx = (window.innerWidth / 2 - view.x) / view.scale; const cy = (window.innerHeight / 2 - view.y) / view.scale; return { x: cx - 140 + (Math.random() - 0.5) * 100, y: cy - 190 + (Math.random() - 0.5) * 100 }; };
-  const addCard = () => { const { x, y } = findSmartPosition(); setCards([...cards, { id: Math.random().toString(36).substr(2, 9), type: "text", x, y, width: 280, height: 380, rotation: (Math.random() - 0.5) * 16, content: { frontText: "New Intention", backReflection: { identity: "", practice: "" }, style: { opacity: 1, fontSize: 32, fontFamily: 'font-serif', fontWeight: 'normal', fontStyle: 'italic', textColor: '#292524' } }, isFlipped: false }]); setSaveStatus(status === 'authenticated' ? "unsaved" : "saved"); };
+  const addCard = () => { const { x, y } = findSmartPosition(); setCards([...cards, { id: Math.random().toString(36).substr(2, 9), type: "text", x, y, width: 280, height: 380, rotation: (Math.random() - 0.5) * 16, content: { frontText: "", backReflection: { identity: "", practice: "" }, style: { opacity: 1, fontSize: 32, fontFamily: 'font-serif', fontWeight: 'normal', fontStyle: 'italic', textColor: '#292524' } }, isFlipped: false }]); setSaveStatus(status === 'authenticated' ? "unsaved" : "saved"); };
   const updateCard = (id: string, d: Partial<CardData>) => { setCards(p => p.map(c => c.id === id ? { ...c, ...d } : c)); setSaveStatus("unsaved"); };
   const deleteCard = (id: string) => { setCards(p => p.filter(c => c.id !== id)); setSaveStatus("unsaved"); };
   const restore = (pt: HistoryPoint) => { if (confirm(`Revert to ${formatDate(pt.createdAt)}?`)) { setCards(Array.isArray(pt.content) ? pt.content : []); lastSavedString.current = JSON.stringify(pt.content); setShowHistory(false); triggerSave(); }};
@@ -298,7 +361,7 @@ export default function Board() {
   return (
     <div className="relative w-full h-screen overflow-hidden bg-[#F9F8F6] cursor-crosshair touch-none" onPointerDown={(e) => { handlePointerDown(e); setSelectedId(null); }} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onWheel={handleWheel}>
       
-      {/* --- NEW: HAMBURGER TOGGLE (ALWAYS VISIBLE) --- */}
+      {/* HAMBURGER TOGGLE */}
       <button 
         onClick={() => setSidebarOpen(true)} 
         className="absolute top-6 left-6 z-[60] p-2 bg-white/80 backdrop-blur border border-stone-200 rounded-lg shadow-sm text-stone-600 hover:bg-white hover:text-stone-900 hover:scale-105 transition-all"
@@ -306,7 +369,7 @@ export default function Board() {
           <Menu size={24} />
       </button>
 
-      {/* --- LEFT SIDEBAR --- */}
+      {/* --- LEFT SIDEBAR (BOARDS) --- */}
       <div className={`absolute left-0 top-0 bottom-0 z-[70] flex transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`} onPointerDown={e => e.stopPropagation()}>
          <div className="w-72 h-full bg-white border-r border-stone-200 shadow-2xl flex flex-col overflow-hidden">
              {/* Header */}
@@ -321,15 +384,35 @@ export default function Board() {
              {/* List */}
              <div className="flex-1 overflow-y-auto p-3 space-y-1">
                  {status === 'unauthenticated' && boards.length === 0 && <div className="p-4 text-xs text-stone-400 text-center italic">Start adding cards to create a guest session.</div>}
+                 
                  {boards.map(b => (
                      <div key={b.id} onClick={() => loadBoard(b.id)} className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all border ${activeBoardId === b.id ? 'bg-stone-900 text-white border-stone-900 shadow-md' : 'bg-white border-transparent hover:bg-stone-100 text-stone-600'}`}>
-                         <div className="flex flex-col gap-0.5 truncate">
-                             <span className="text-xs font-bold truncate max-w-[180px]">{b.title}</span>
-                             <span className={`text-[10px] font-mono ${activeBoardId === b.id ? 'text-stone-400' : 'text-stone-400'}`}>Updated {new Date(b.updatedAt).toLocaleDateString()}</span>
-                         </div>
-                         {b.id !== GUEST_BOARD_ID && (
+                         
+                         {/* TITLE AREA - Swaps between Text and Input */}
+                         {editingBoardId === b.id ? (
+                             <div className="flex items-center gap-2 w-full">
+                                 <input 
+                                    autoFocus
+                                    value={editTitleInput}
+                                    onChange={(e) => setEditTitleInput(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && saveRename(b.id)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="w-full text-xs font-bold p-1 rounded text-stone-900 outline-none ring-2 ring-blue-500"
+                                 />
+                                 <button onClick={(e) => { e.stopPropagation(); saveRename(b.id); }} className="p-1 bg-green-100 text-green-700 rounded hover:bg-green-200"><Check size={12}/></button>
+                             </div>
+                         ) : (
+                             <div className="flex flex-col gap-0.5 truncate">
+                                 <span className="text-xs font-bold truncate max-w-[150px]">{b.title}</span>
+                                 <span className={`text-[10px] font-mono ${activeBoardId === b.id ? 'text-stone-400' : 'text-stone-400'}`}>Updated {new Date(b.updatedAt).toLocaleDateString()}</span>
+                             </div>
+                         )}
+
+                         {/* ACTION BUTTONS (Edit / Delete) */}
+                         {b.id !== GUEST_BOARD_ID && !editingBoardId && (
                             <div className="hidden group-hover:flex items-center gap-1">
-                                <button onClick={(e) => deleteBoard(b.id, e)} className="p-1.5 hover:bg-red-500/20 hover:text-red-500 rounded"><Trash2 size={14}/></button>
+                                <button onClick={(e) => startRenaming(e, b)} className={`p-1.5 rounded ${activeBoardId === b.id ? 'hover:bg-stone-700 text-stone-400 hover:text-white' : 'hover:bg-stone-200 text-stone-400 hover:text-stone-600'}`}><Edit2 size={12}/></button>
+                                <button onClick={(e) => deleteBoard(b.id, e)} className={`p-1.5 rounded ${activeBoardId === b.id ? 'hover:bg-red-500/50 text-red-400 hover:text-white' : 'hover:bg-red-500/20 text-red-300 hover:text-red-600'}`}><Trash2 size={12}/></button>
                             </div>
                          )}
                      </div>
@@ -353,7 +436,52 @@ export default function Board() {
          <div className="w-screen h-full bg-stone-900/20 backdrop-blur-sm" onClick={() => setSidebarOpen(false)}></div>
       </div>
 
-      {/* --- NEW: BOARD LOADING OVERLAY --- */}
+      {/* --- RIGHT SIDEBAR (FRIENDS) --- */}
+      <div className={`absolute right-0 top-0 bottom-0 z-[60] flex transition-transform duration-300 ${rightSidebarOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+          <div className="w-72 h-full bg-white border-l border-stone-200 shadow-2xl flex flex-col">
+              <div className="p-4 border-b border-stone-100 flex justify-between bg-stone-50">
+                  <span className="font-bold text-stone-800 flex items-center gap-2"><Users size={16}/> Community</span>
+                  <button onClick={() => setRightSidebarOpen(false)}><X size={18}/></button>
+              </div>
+
+              {/* Friend List */}
+              <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                  {friends.length === 0 && <div className="p-4 text-xs text-stone-400 text-center italic">No friends yet. Invite people to collaborate!</div>}
+                  {friends.map(friend => (
+                      <div key={friend.id} onClick={() => selectFriend(friend)} className="p-3 bg-stone-50 rounded-lg cursor-pointer hover:bg-stone-100 flex items-center gap-3">
+                           <img src={friend.image || "/default-avatar.png"} className="w-8 h-8 rounded-full border border-stone-200"/>
+                           <div className="flex flex-col">
+                               <div className="flex items-center gap-1">
+                                   <span className="text-sm font-bold text-stone-700">{friend.name}</span>
+                                   {friend.role === 'DEV' && <span className="bg-blue-100 text-blue-700 text-[9px] px-1.5 py-0.5 rounded font-bold">DEV</span>}
+                               </div>
+                               <span className="text-[10px] text-stone-400">View Boards</span>
+                           </div>
+                      </div>
+                  ))}
+              </div>
+              
+              {/* Viewing Friend's Boards */}
+              {viewingFriend && (
+                  <div className="border-t border-stone-200 p-3 bg-blue-50">
+                      <p className="text-[10px] font-bold text-blue-600 uppercase mb-2">{viewingFriend.name}'s Boards</p>
+                      {friendBoards.length === 0 && <span className="text-xs text-stone-400 italic">No public boards found.</span>}
+                      {friendBoards.map(b => (
+                          <button key={b.id} onClick={() => loadFriendBoard(viewingFriend, b.id)} className="w-full text-left text-xs py-1.5 px-2 hover:bg-white rounded text-stone-600 truncate transition-colors">
+                              {b.title}
+                          </button>
+                      ))}
+                  </div>
+              )}
+          </div>
+      </div>
+
+      {/* Toggle Button for Right Sidebar (Friends) */}
+      <button onClick={() => setRightSidebarOpen(true)} className="absolute top-20 right-6 z-50 p-2 bg-white rounded-full shadow-md text-stone-500 hover:text-stone-900 transition-transform hover:scale-105">
+          <Users size={20} />
+      </button>
+
+      {/* --- BOARD LOADING OVERLAY --- */}
       <AnimatePresence>
         {isLoadingBoard && (
             <motion.div 
@@ -367,7 +495,9 @@ export default function Board() {
                 />
                 <div className="flex items-center gap-2 text-stone-500">
                     <Loader2 size={18} className="animate-spin"/>
-                    <span className="text-xs font-bold uppercase tracking-widest">Switching Board...</span>
+                    <span className="text-xs font-bold uppercase tracking-widest">
+                        {viewingFriend ? `Loading ${viewingFriend.name}'s Vision...` : 'Switching Board...'}
+                    </span>
                 </div>
             </motion.div>
         )}
@@ -422,19 +552,28 @@ export default function Board() {
       {/* TOP BAR */}
       <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-start z-50 pointer-events-none select-none pl-[80px]">
         <div className="pointer-events-auto flex flex-col items-start gap-1">
-            <h1 className="text-xl font-serif text-stone-800 tracking-tight font-bold">ViBo</h1>
+            <h1 className="text-xl font-serif text-stone-800 tracking-tight font-bold">
+                {/* Dynamically show board title or ViBo default */}
+                {viewingFriend ? `${viewingFriend.name}'s Vision` : (activeBoardId ? boards.find(b => b.id === activeBoardId)?.title || "ViBo" : "ViBo")}
+            </h1>
             <div className="relative flex gap-1">
-                <button onClick={triggerSave} className={`flex items-center gap-2 text-xs transition-all bg-white/50 px-2 py-1.5 rounded-l-md border border-stone-200/50 hover:bg-white hover:border-stone-300 ${status === 'unauthenticated' ? 'opacity-70' : ''}`}>
-                    {saveStatus === 'saving' && <Loader2 size={12} className="animate-spin text-blue-500"/>}
-                    {saveStatus === 'saved' && <Cloud size={12} className="text-blue-500"/>}
-                    {(saveStatus === 'unsaved' || saveStatus === 'limit_reached') && <CloudOff size={12} className="text-orange-400"/>}
-                    {saveStatus === 'error' && <X size={12} className="text-red-500"/>}
-                    <span className="font-medium">{status === 'unauthenticated' ? "Guest (Local)" : saveStatus === 'saving' ? "Saving..." : saveStatus === 'limit_reached' ? "Not Saved" : saveStatus === 'unsaved' ? "Unsaved" : `Saved ${lastSavedTime}`}</span>
-                </button>
-                <button onClick={() => setShowHistory(!showHistory)} className="bg-white/50 px-1.5 py-1.5 rounded-r-md border border-l-0 border-stone-200/50 hover:bg-white hover:border-stone-300 text-stone-500 hover:text-stone-800">
-                    <History size={12} />
-                </button>
-                {showHistory && (
+                {/* Hide Save Status if Viewing Friend */}
+                {!viewingFriend && (
+                    <button onClick={triggerSave} className={`flex items-center gap-2 text-xs transition-all bg-white/50 px-2 py-1.5 rounded-l-md border border-stone-200/50 hover:bg-white hover:border-stone-300 ${status === 'unauthenticated' ? 'opacity-70' : ''}`}>
+                        {saveStatus === 'saving' && <Loader2 size={12} className="animate-spin text-blue-500"/>}
+                        {saveStatus === 'saved' && <Cloud size={12} className="text-blue-500"/>}
+                        {(saveStatus === 'unsaved' || saveStatus === 'limit_reached') && <CloudOff size={12} className="text-orange-400"/>}
+                        {saveStatus === 'error' && <X size={12} className="text-red-500"/>}
+                        <span className="font-medium">{status === 'unauthenticated' ? "Guest (Local)" : saveStatus === 'saving' ? "Saving..." : saveStatus === 'limit_reached' ? "Not Saved" : saveStatus === 'unsaved' ? "Unsaved" : `Saved ${lastSavedTime}`}</span>
+                    </button>
+                )}
+                {/* History Button (Only for owner) */}
+                {!viewingFriend && (
+                    <button onClick={() => setShowHistory(!showHistory)} className="bg-white/50 px-1.5 py-1.5 rounded-r-md border border-l-0 border-stone-200/50 hover:bg-white hover:border-stone-300 text-stone-500 hover:text-stone-800">
+                        <History size={12} />
+                    </button>
+                )}
+                {showHistory && !viewingFriend && (
                     <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-stone-100 overflow-hidden flex flex-col z-[60]">
                         <div className="px-3 py-2 bg-stone-50 border-b border-stone-100 text-[10px] font-bold uppercase tracking-wider text-stone-500 flex justify-between">
                             <span>History</span>
@@ -449,6 +588,13 @@ export default function Board() {
                             ))}
                             {status === 'unauthenticated' && <div className="p-4 text-center text-xs text-stone-400 italic">Cloud history not available in guest mode</div>}
                         </div>
+                    </div>
+                )}
+                
+                {/* Spectator Mode Indicator */}
+                {viewingFriend && (
+                    <div className="bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-2">
+                        <Users size={12} /> Spectator Mode
                     </div>
                 )}
             </div>
@@ -468,9 +614,16 @@ export default function Board() {
                 )}
             </div>
             <div className="h-6 w-px bg-stone-200 mx-1"></div>
-            <button onClick={addCard} className="flex items-center gap-2 bg-stone-900 text-stone-50 px-4 py-2 rounded-full shadow-lg hover:scale-105 transition-transform">
-                <Plus size={16} /> <span className="text-sm font-medium">Add</span>
-            </button>
+            {/* Disable Add Card if Viewing Friend */}
+            {!viewingFriend ? (
+                <button onClick={addCard} className="flex items-center gap-2 bg-stone-900 text-stone-50 px-4 py-2 rounded-full shadow-lg hover:scale-105 transition-transform">
+                    <Plus size={16} /> <span className="text-sm font-medium">Add</span>
+                </button>
+            ) : (
+                <button disabled className="flex items-center gap-2 bg-stone-100 text-stone-400 px-4 py-2 rounded-full cursor-not-allowed">
+                    <Plus size={16} /> <span className="text-sm font-medium">Add</span>
+                </button>
+            )}
         </div>
       </div>
     </div>

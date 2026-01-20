@@ -44,9 +44,16 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   image         String?
+  role          String    @default("USER") // NEW: "USER" or "DEV"
+  
   accounts      Account[]
   sessions      Session[]
   boards        Board[]
+  
+  // NEW: Social Relations
+  sentRequests      Friendship[] @relation("Sender")
+  receivedRequests  Friendship[] @relation("Receiver")
+  comments          Comment[]
 }
 
 model VerificationToken {
@@ -57,23 +64,49 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-// --- YOUR APP DATA ---
-
 model Board {
   id        String   @id @default(cuid())
-  userId    String   // CHANGED: Removed "@unique" to allow multiple boards per user
+  userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title     String   @default("Untitled Board") // NEW: Name of the board
-  content   Json     // Stores Cards
+  title     String   @default("Untitled Board")
+  content   Json
+  isPublic  Boolean  @default(false) // NEW: Allow friends to view
   updatedAt DateTime @updatedAt
 
   history   BoardHistory[] 
+  comments  Comment[] // NEW: Comments on this board
 }
 
 model BoardHistory {
   id        String   @id @default(cuid())
   boardId   String
   board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  content   Json     // Stores the snapshot of cards
+  content   Json
+  createdAt DateTime @default(now())
+}
+
+// NEW: Friends Logic
+model Friendship {
+  id        String   @id @default(cuid())
+  senderId  String
+  sender    User     @relation("Sender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId String
+  receiver  User     @relation("Receiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  status    String   @default("PENDING") // PENDING, ACCEPTED
+  createdAt DateTime @default(now())
+
+  @@unique([senderId, receiverId])
+}
+
+// NEW: Comments (Sticky Notes)
+model Comment {
+  id        String   @id @default(cuid())
+  text      String
+  x         Float    // Position on canvas
+  y         Float
+  boardId   String
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 }

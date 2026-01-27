@@ -5,29 +5,27 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 const prisma = new PrismaClient();
 
-// HELPER: Calculate size in MB
 const getSizeInMB = (obj: any) => Buffer.byteLength(JSON.stringify(obj)) / (1024 * 1024);
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Check if we are asking for a SPECIFIC board or the LIST
   const { searchParams } = new URL(req.url);
   const boardId = searchParams.get("id");
+  // FIX: Allow fetching specific user's boards (for Friend View)
+  const targetUserId = searchParams.get("userId") || session.user.id;
 
   if (boardId) {
-    // Return specific board content
-    const board = await prisma.board.findUnique({
-      where: { id: boardId, userId: session.user.id }, // Security: Ensure ownership
+    const board = await prisma.board.findFirst({
+      where: { id: boardId, userId: targetUserId }, // Match board to the target user
       include: { history: { orderBy: { createdAt: 'desc' }, take: 10 } }
     });
     return NextResponse.json(board || { error: "Not found" });
   } else {
-    // Return LIST of boards (metadata only, no heavy content)
     const boards = await prisma.board.findMany({
-      where: { userId: session.user.id },
-      select: { id: true, title: true, updatedAt: true },
+      where: { userId: targetUserId }, // FIX: Filter by target user, not always session user
+      select: { id: true, title: true, updatedAt: true, background: true, randomRotation: true }, // Added background/rotation
       orderBy: { updatedAt: 'desc' }
     });
     return NextResponse.json({ boards });
@@ -39,57 +37,48 @@ export async function POST(req: Request) {
   if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { action, boardId, title, background, cards } = body;
+  const { action, boardId, title, background, randomRotation, cards } = body;
 
-  // 1. CREATE NEW BOARD
   if (action === "create") {
     const count = await prisma.board.count({ where: { userId: session.user.id } });
-    
-    if (count >= 10) {
-      return NextResponse.json({ error: "LIMIT_REACHED" }, { status: 403 });
-    }
+    if (count >= 10) return NextResponse.json({ error: "LIMIT_REACHED" }, { status: 403 });
 
     const newBoard = await prisma.board.create({
       data: {
         userId: session.user.id,
         title: title || "New Vision Board",
-        background: "dots", // Default
+        background: background || "dots",
+        randomRotation: randomRotation !== undefined ? randomRotation : true,
         content: cards || [],
       }
     });
     return NextResponse.json(newBoard);
   }
 
-  // 2. UPDATE EXISTING BOARD
   if (action === "update" && boardId) {
-    // Size Check (100MB limit)
-    if (getSizeInMB(cards) > 100) {
-      return NextResponse.json({ error: "SIZE_LIMIT_EXCEEDED" }, { status: 413 });
-    }
+    if (getSizeInMB(cards) > 100) return NextResponse.json({ error: "SIZE_LIMIT_EXCEEDED" }, { status: 413 });
 
     const board = await prisma.board.update({
       where: { id: boardId, userId: session.user.id },
       data: { 
           content: cards !== undefined ? cards : undefined,
-          background: background !== undefined ? background : undefined // Update if provided
+          background: background !== undefined ? background : undefined,
+          randomRotation: randomRotation !== undefined ? randomRotation : undefined
       },
     });
 
-    // Save History Snapshot
-    await prisma.boardHistory.create({
-      data: { boardId, content: cards }
-    });
-
-    // Cleanup Old History (Keep last 10)
-    const historyCount = await prisma.boardHistory.count({ where: { boardId } });
-    if (historyCount > 10) {
-      const old = await prisma.boardHistory.findMany({
-        where: { boardId }, orderBy: { createdAt: 'asc' }, take: historyCount - 10, select: { id: true }
-      });
-      await prisma.boardHistory.deleteMany({ where: { id: { in: old.map(r => r.id) } } });
+    // History Snapshot (Only if content changed)
+    if (cards) {
+        await prisma.boardHistory.create({ data: { boardId, content: cards } });
+        const historyCount = await prisma.boardHistory.count({ where: { boardId } });
+        if (historyCount > 10) {
+            const old = await prisma.boardHistory.findMany({
+                where: { boardId }, orderBy: { createdAt: 'asc' }, take: historyCount - 10, select: { id: true }
+            });
+            await prisma.boardHistory.deleteMany({ where: { id: { in: old.map(r => r.id) } } });
+        }
     }
 
-    // Return fresh history list
     const history = await prisma.boardHistory.findMany({
        where: { boardId }, orderBy: { createdAt: 'desc' }, take: 10,
        select: { id: true, createdAt: true, content: true }
@@ -98,7 +87,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ updatedAt: board.updatedAt, history });
   }
   
-  // 3. RENAME
   if (action === "rename" && boardId) {
       const board = await prisma.board.update({
           where: { id: boardId, userId: session.user.id },
@@ -107,11 +95,8 @@ export async function POST(req: Request) {
       return NextResponse.json(board);
   }
 
-  // 4. DELETE
   if (action === "delete" && boardId) {
-      await prisma.board.delete({
-          where: { id: boardId, userId: session.user.id }
-      });
+      await prisma.board.delete({ where: { id: boardId, userId: session.user.id } });
       return NextResponse.json({ success: true });
   }
 

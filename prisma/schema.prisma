@@ -73,7 +73,7 @@ model Board {
   content   Json     
   isPublic  Boolean  @default(false)
   updatedAt DateTime @updatedAt
-
+  randomRotation Boolean @default(true)
   history   BoardHistory[] 
   comments  Comment[]
 }

@@ -7,6 +7,30 @@ import { X, GitCommit, ScrollText } from "lucide-react";
 // --- CHANGELOG DATA ---
 const CHANGELOG = [
   {
+    version: "v0.9.0",
+    date: "Jan 20, 2026",
+    title: "Multi-Boards, Social Viewing & Creative Expansion",
+    description: "A major leap toward collaborative and expressive vision building. ViBo now supports multiple boards, social viewing, and powerful new creative tools.",
+    features: [
+      "Multi-Board Architecture: Create, switch between, and manage up to 10 separate Vision Boards.",
+      "Spectator Mode: View friends’ boards in read-only mode via the new Community sidebar.",
+      "Friends Sidebar: Added a right sidebar to browse friends and explore their boards.",
+      "Admin Visibility: Admin users are now labeled with a 'Dev' tag.",
+      "Board Backgrounds: Customize each board with Dots, Grid, Yellow, or Cyan backgrounds, persisted per board.",
+      "YouTube Cards: Paste a YouTube link to embed a playable video directly on your board.",
+      "Shape Cards: Add decorative shapes including Circles, Rectangles, and Pills.",
+      "Enhanced Text Editor: Multi-line text support, alignment controls (horizontal & vertical), and background colors.",
+      "Dual Sidebar Layout: Left sidebar for board management, right sidebar for friends and community.",
+      "Add Menu Redesign: Replaced the single Add button with a popover menu for specific card types.",
+      "Loading Overlay: Added a 'ViBo Loading' state when switching boards or viewing friends’ boards.",
+      "Inline Renaming: Rename boards directly from the sidebar without modal dialogs.",
+      "Crash Protection: Hardened VisionCard rendering to prevent white-screen crashes from corrupt data.",
+      "Database Updates: Extended Prisma schema to support board backgrounds, friendships, and generic content types.",
+      "Type Safety: Improved TypeScript interfaces for polymorphic card content (Text, Image, YouTube).",
+      "Guest Mode Fixes: Ensured guest data now persists correctly across refreshes."
+    ]
+  },
+  {
     version: "v0.8.0",
     date: "Jan 18, 2026",
     title: "ViBo Rebrand & Cloud History",

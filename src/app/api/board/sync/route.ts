@@ -39,7 +39,7 @@ export async function POST(req: Request) {
   if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { action, boardId, title, cards } = body;
+  const { action, boardId, title, background, cards } = body;
 
   // 1. CREATE NEW BOARD
   if (action === "create") {
@@ -53,7 +53,8 @@ export async function POST(req: Request) {
       data: {
         userId: session.user.id,
         title: title || "New Vision Board",
-        content: cards || [], // Can initialize with guest data
+        background: "dots", // Default
+        content: cards || [],
       }
     });
     return NextResponse.json(newBoard);
@@ -67,8 +68,11 @@ export async function POST(req: Request) {
     }
 
     const board = await prisma.board.update({
-      where: { id: boardId, userId: session.user.id }, // Security Check
-      data: { content: cards },
+      where: { id: boardId, userId: session.user.id },
+      data: { 
+          content: cards !== undefined ? cards : undefined,
+          background: background !== undefined ? background : undefined // Update if provided
+      },
     });
 
     // Save History Snapshot

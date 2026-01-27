@@ -69,12 +69,13 @@ model Board {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String   @default("Untitled Board")
-  content   Json
-  isPublic  Boolean  @default(false) // NEW: Allow friends to view
+  background String  @default("dots") // NEW: Stores background style
+  content   Json     
+  isPublic  Boolean  @default(false)
   updatedAt DateTime @updatedAt
 
   history   BoardHistory[] 
-  comments  Comment[] // NEW: Comments on this board
+  comments  Comment[]
 }
 
 model BoardHistory {

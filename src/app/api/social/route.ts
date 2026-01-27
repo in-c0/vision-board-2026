@@ -4,7 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 const prisma = new PrismaClient();
-const ADMIN_EMAIL = "wldud5192@gmail.com"; // Ava's Email
+const ADMIN_EMAIL = "music.in.avakang@gmail.com"; // Ava's Email
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);

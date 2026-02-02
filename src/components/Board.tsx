@@ -507,10 +507,16 @@ export default function Board() {
 
   function restore(point: HistoryPoint): void {
       if (!Array.isArray(point.content)) return;
+      
+      // 1. Update the UI to show the old board
       setCards(point.content as CardData[]);
-      setSaveStatus("saved"); // Technically it's a restore, but we treat it as loaded state
-      lastSavedString.current = JSON.stringify(point.content);
-      triggerSave(); // Autosave the restore
+      
+      // 2. Mark as "Saved" visually (since it came from a save)
+      setSaveStatus("saved");
+      
+      // 3. IMPORTANT: Tell the autosave system "This is the baseline".
+      // This prevents the autosave interval from thinking "Oh, the cards changed! I must save!"
+      lastSavedString.current = JSON.stringify(point.content);      
   }
 
   return (

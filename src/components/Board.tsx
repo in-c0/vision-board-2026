@@ -10,7 +10,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   Plus, Minus, Loader2, Cloud, CloudOff, X, User, LogIn, History, 
   Layout, Trash2, Menu, Users, Edit2, Check, AlertTriangle,
-  Settings, Image as ImageIcon, Type, Square, Youtube, Palette, Shuffle, Lock
+  Settings, Image as ImageIcon, Type, Square, Youtube, Palette, Shuffle, Lock,
+  CheckCircle, AlertCircle, Info // NEW ICONS
 } from "lucide-react";
 
 interface HistoryPoint { id: string; createdAt: string; content: any; }
@@ -58,7 +59,7 @@ export default function Board() {
   const [boardBackground, setBoardBackground] = useState<string>("dots"); 
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [showLimitModal, setShowLimitModal] = useState(false); // NEW: Limit Modal
+  const [showLimitModal, setShowLimitModal] = useState(false);
 
   // Sync
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved" | "error" | "limit_reached">("saved");
@@ -66,6 +67,10 @@ export default function Board() {
   const [historyList, setHistoryList] = useState<HistoryPoint[]>([]); 
   const [showHistory, setShowHistory] = useState(false);
   
+  // NEW: Toast Notification State
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const lastSavedString = useRef<string>("");
   
   // Viewport
@@ -78,6 +83,13 @@ export default function Board() {
       const dateObj = new Date(d);
       if (isNaN(dateObj.getTime())) return "Just now";
       return dateObj.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  };
+
+  // --- TOAST HELPER ---
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      setToast({ message, type });
+      toastTimeoutRef.current = setTimeout(() => setToast(null), 3000); // Auto dismiss after 3s
   };
 
   // --- API ACTIONS ---
@@ -120,10 +132,17 @@ export default function Board() {
             if (data.updatedAt) setLastSavedTime(formatDate(data.updatedAt));
             
             setViewingFriend(null);
+            // TOAST: Success
+            showToast("Board loaded successfully", "success");
         } else {
             setSaveStatus("error");
+            showToast("Failed to load board", "error");
         }
-      } catch (e) { console.error(e); setSaveStatus("error"); } 
+      } catch (e) { 
+          console.error(e); 
+          setSaveStatus("error"); 
+          showToast("Connection error", "error");
+      } 
       finally { setIsLoadingBoard(false); }
   };
 
@@ -139,7 +158,7 @@ export default function Board() {
               setSaveStatus("limit_reached");
               setShowLimitModal(true);
               setIsLoadingBoard(false);
-              return false; // Failed
+              return false;
           }
           
           if (res.ok) {
@@ -151,30 +170,28 @@ export default function Board() {
               lastSavedString.current = JSON.stringify(initialCards);
               setSaveStatus("saved");
               setSidebarOpen(false);
-              return true; // Success
+              showToast("New board created", "success");
+              return true;
           }
-      } catch (e) { console.error(e); }
+      } catch (e) { console.error(e); showToast("Failed to create board", "error"); }
       setIsLoadingBoard(false);
       return false;
   };
 
-  // NEW: Sync Guest Data to Cloud on Login
   const syncGuestToCloud = async () => {
       const localData = localStorage.getItem(GUEST_STORAGE_KEY);
       if (!localData) return;
 
       const guestCards = JSON.parse(localData);
-      // We don't necessarily sync the history stack to DB on creation (too complex), 
-      // but we sync the current state.
       
       setIsLoadingBoard(true);
       const success = await createBoard("My Guest Board", guestCards);
       
       if (success) {
-          // Only clear local storage if successfully saved to cloud
           localStorage.removeItem(GUEST_STORAGE_KEY);
           localStorage.removeItem(GUEST_HISTORY_KEY);
           setLastSavedTime("Synced to Cloud");
+          showToast("Guest data synced to cloud", "success");
       }
       setIsLoadingBoard(false);
   };
@@ -185,14 +202,15 @@ export default function Board() {
       const res = await fetch("/api/board/sync", { method: "POST", body: JSON.stringify({ action: "delete", boardId: id }) });
       if (res.ok) {
           const newBoards = await fetchBoardList();
-          // If we just deleted the active board, or we are in 'limit reached' mode
+          showToast("Board deleted", "info");
           if (activeBoardId === id) { 
               if (newBoards.length > 0) loadBoard(newBoards[0].id);
               else { setCards([]); setActiveBoardId(null); }
           } else if (saveStatus === 'limit_reached') {
-              // If user deleted a board to make space, try saving again automatically
               triggerSave();
           }
+      } else {
+          showToast("Failed to delete board", "error");
       }
   };
 
@@ -208,11 +226,11 @@ export default function Board() {
       setEditingBoardId(null);
       await fetch("/api/board/sync", { method: "POST", body: JSON.stringify({ action: "rename", boardId: id, title: editTitleInput }) });
       await fetchBoardList(); 
+      showToast("Board renamed", "success");
   };
 
   // --- SOCIAL & FRIENDS ---
   const fetchFriends = async () => {
-    // ... (Same as before)
     const ava = { id: 'ava-dev', name: 'Ava Ji Young Kim', image: '', role: 'DEV' };
     if (status !== 'authenticated') return;
     try {
@@ -227,7 +245,6 @@ export default function Board() {
   };
   
   const selectFriend = async (friend: Friend) => {
-      // ... (Same as before)
       const res = await fetch(`/api/board/sync?userId=${friend.id}`);
       if (res.ok) {
           const data = await res.json();
@@ -239,12 +256,12 @@ export default function Board() {
           } else {
               setCards([]); 
               setActiveBoardId(null);
+              showToast("Friend has no public boards", "info");
           }
       }
   };
 
   const loadFriendBoard = async (friend: Friend, boardId: string) => {
-      // ... (Same as before)
       setIsLoadingBoard(true);
       setViewingFriend(friend);
       setSidebarOpen(false); 
@@ -256,13 +273,13 @@ export default function Board() {
               setBoardBackground(data.background || "dots");
               setActiveBoardId(boardId);
               setSaveStatus("saved"); 
+              showToast(`Viewing ${friend.name}'s board`, "info");
           }
-      } catch(e) { console.error(e); }
+      } catch(e) { console.error(e); showToast("Could not load friend's board", "error"); }
       setIsLoadingBoard(false);
   };
 
   // --- ACTIONS ---
-  // ... (handleBoardContextMenu, bringToFront, findSmartPosition, addCardOfType... Same as before)
   const handleBoardContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     if ((e.target as HTMLElement).closest('.group')) return;
@@ -285,85 +302,80 @@ export default function Board() {
   const findSmartPosition = () => { if (typeof window === 'undefined') return { x: 0, y: 0 }; const cx = (window.innerWidth / 2 - view.x) / view.scale; const cy = (window.innerHeight / 2 - view.y) / view.scale; return { x: cx - 140 + (Math.random() - 0.5) * 100, y: cy - 190 + (Math.random() - 0.5) * 100 }; };
 
   const addCardOfType = (type: 'text' | 'card' | 'youtube' | 'shape') => {
-    let x, y;
-    if (contextMenuPos) {
-        x = (contextMenuPos.x - viewState.x) / viewState.scale;
-        y = (contextMenuPos.y - viewState.y) / viewState.scale;
-    } else {
-        const pos = findSmartPosition();
-        x = pos.x; y = pos.y;
-    }
+    let x, y;
+    if (contextMenuPos) {
+        x = (contextMenuPos.x - viewState.x) / viewState.scale;
+        y = (contextMenuPos.y - viewState.y) / viewState.scale;
+    } else {
+        const pos = findSmartPosition();
+        x = pos.x; y = pos.y;
+    }
 
-    const defaults = {
-        text: { text: "Right Click to Edit", bg: "transparent", type: 'text' },
-        card: { text: "", bg: "#ffffff", type: 'image' },
-        youtube: { text: "", bg: "#000000", type: 'youtube' },
-        shape: { text: "", bg: "#e5e7eb", type: 'shape' }
-    };
-    const config = defaults[type];
-    const rot = randomRotation ? (Math.random() - 0.5) * 16 : 0;
+    const defaults = {
+        text: { text: "Double click to edit", bg: "transparent", type: 'text' },
+        card: { text: "", bg: "#ffffff", type: 'image' },
+        youtube: { text: "", bg: "#000000", type: 'youtube' },
+        shape: { text: "", bg: "#e5e7eb", type: 'shape' }
+    };
+    const config = defaults[type];
+    const rot = randomRotation ? (Math.random() - 0.5) * 16 : 0;
 
-    const newCard: CardData = {
-        id: Math.random().toString(36).substr(2, 9),
-        type: config.type as any, 
-        x, y, width: 280, height: 380, rotation: rot,
-        content: { 
-            frontText: config.text, 
-            style: { 
-                opacity: 1, fontSize: 32, fontFamily: 'font-serif', fontWeight: 'normal', fontStyle: 'italic', textColor: '#292524',
-                backgroundColor: config.bg,
-                textAlign: 'center', verticalAlign: 'center'
-            },
-            shapeType: type === 'shape' ? 'circle' : undefined,
-            youtubeUrl: "" 
-        } as any,
-        isFlipped: false
-    };
-    setCards([...cards, newCard]);
-    setSelectedId(newCard.id);
-    setSaveStatus("unsaved"); 
-    setShowAddMenu(false);
-    setContextMenuPos(null);
-  };
+    const newCard: CardData = {
+        id: Math.random().toString(36).substr(2, 9),
+        type: config.type as any, 
+        x, y, width: 280, height: 380, rotation: rot,
+        content: { 
+            frontText: config.text, 
+            style: { 
+                opacity: 1, fontSize: 32, fontFamily: 'font-serif', fontWeight: 'normal', fontStyle: 'italic', textColor: '#292524',
+                backgroundColor: config.bg,
+                textAlign: 'center', verticalAlign: 'center'
+            },
+            shapeType: type === 'shape' ? 'circle' : undefined,
+            youtubeUrl: "" 
+        } as any,
+        isFlipped: false
+    };
+    setCards([...cards, newCard]);
+    setSelectedId(newCard.id);
+    setSaveStatus("unsaved"); 
+    setShowAddMenu(false);
+    setContextMenuPos(null);
+  };
 
 
-// ... imports and state remain the same
-
-  // --- 1. FIXED TRIGGER SAVE (Generates History for Guests) ---
+  // --- SAVE LOGIC ---
   const triggerSave = useCallback(async () => {
-    // Safety checks
-    if (!isLoaded || viewingFriend) return;
+    if (!isLoaded || viewingFriend) return;
 
-    // --- GUEST MODE: Local Logic ---
-    if (status === "unauthenticated") {
-        // 1. VISUAL FEEDBACK: Start "Saving" state
+    // --- GUEST SAVE ---
+    if (status === "unauthenticated") {
         setSaveStatus("saving");
-        
-        // 2. ARTIFICIAL DELAY: Wait 600ms so the user sees the spinner
+        // Simulated Delay for Visual Feedback
         await new Promise(resolve => setTimeout(resolve, 600));
 
-        // 3. Perform the actual Save
-        const newPoint: HistoryPoint = {
-            id: Math.random().toString(36).substr(2, 9),
-            createdAt: new Date().toISOString(),
-            content: cards 
-        };
+        const newPoint: HistoryPoint = {
+            id: Math.random().toString(36).substr(2, 9),
+            createdAt: new Date().toISOString(),
+            content: cards 
+        };
 
-        const updatedHistory = [newPoint, ...historyList].slice(0, 10);
-        
-        localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(cards));
-        localStorage.setItem(GUEST_HISTORY_KEY, JSON.stringify(updatedHistory));
-        
-        // 4. Update UI to "Saved"
-        setHistoryList(updatedHistory);
-        setLastSavedTime("Local (Guest)");
-        setSaveStatus("saved");
-        lastSavedString.current = JSON.stringify(cards);
-        return;
-    }
+        const updatedHistory = [newPoint, ...historyList].slice(0, 10);
+        
+        localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(cards));
+        localStorage.setItem(GUEST_HISTORY_KEY, JSON.stringify(updatedHistory));
+        
+        setHistoryList(updatedHistory);
+        setLastSavedTime("Local (Guest)");
+        setSaveStatus("saved");
+        lastSavedString.current = JSON.stringify(cards);
+        
+        // TOAST: Guest Save Success
+        showToast("Saved locally", "success");
+        return;
+    }
     
-    // --- AUTHENTICATED MODE (Keep existing logic) ---
-    // If we have no activeBoardId (likely due to limit reached previously), try to create it now
+    // --- AUTHENTICATED SAVE ---
     if (!activeBoardId && status === "authenticated") {
         const success = await createBoard("My New Board", cards);
         if (!success) return; 
@@ -390,65 +402,62 @@ export default function Board() {
             if (data.updatedAt) setLastSavedTime(formatDate(data.updatedAt));
             else setLastSavedTime(formatDate(new Date().toISOString()));
             
-            // API returns the updated history list
             setHistoryList(data.history || []);
             lastSavedString.current = JSON.stringify(cards);
+            // Note: We don't toast on auto-save success to avoid spamming the user
         } else {
             setSaveStatus("error");
+            showToast("Failed to save changes", "error");
         }
-    } catch (e) { setSaveStatus("error"); }
+    } catch (e) { 
+        setSaveStatus("error"); 
+        showToast("Connection failed", "error");
+    }
   }, [cards, status, activeBoardId, viewingFriend, boardBackground, randomRotation, isLoaded, historyList]);
 
-
-  // --- INIT & MIGRATION ---
-  useEffect(() => {
-    async function init() {
-      if (status === "authenticated") {
-          // ... (Authenticated logic same as before) ...
-          fetchFriends();
-          const remoteBoards = await fetchBoardList() as any || [];
-          const localGuestData = localStorage.getItem(GUEST_STORAGE_KEY);
-          if (localGuestData) {
-              await syncGuestToCloud();
-              const updatedBoards = await fetchBoardList() as any || [];
-              if (updatedBoards.length > 0) await loadBoard(updatedBoards[0].id);
-          } else {
-              if (remoteBoards.length > 0) await loadBoard(remoteBoards[0].id);
-              else await createBoard(STARTER_BOARDS[0]);
-          }
-      } else {
-          // --- GUEST MODE INIT ---
+  // --- INIT ---
+  useEffect(() => {
+    async function init() {
+      if (status === "authenticated") {
+          fetchFriends();
+          const remoteBoards = await fetchBoardList() as any || [];
           
-          // 1. VISUAL FEEDBACK: Force the loading screen to show
+          const localGuestData = localStorage.getItem(GUEST_STORAGE_KEY);
+          if (localGuestData) {
+              await syncGuestToCloud();
+              const updatedBoards = await fetchBoardList() as any || [];
+              if (updatedBoards.length > 0) await loadBoard(updatedBoards[0].id);
+          } else {
+              if (remoteBoards.length > 0) await loadBoard(remoteBoards[0].id);
+              else await createBoard(STARTER_BOARDS[0]);
+          }
+      } else {
+          // Guest Init
           setIsLoadingBoard(true); 
-          
-          // 2. ARTIFICIAL DELAY: Wait 800ms to feel like a "boot up"
           await new Promise(resolve => setTimeout(resolve, 800));
 
-          const localData = localStorage.getItem(GUEST_STORAGE_KEY);
-          const localHistory = localStorage.getItem(GUEST_HISTORY_KEY);
-          
-          if (localData) {
-              setCards(JSON.parse(localData));
-              if (localHistory) setHistoryList(JSON.parse(localHistory)); 
-              
-              setBoards([{ id: GUEST_BOARD_ID, title: "Guest Session", updatedAt: new Date().toISOString() }]);
-              setActiveBoardId(GUEST_BOARD_ID);
-              setLastSavedTime("Local");
-              lastSavedString.current = localData; 
-          } else {
-              setActiveBoardId(GUEST_BOARD_ID);
-          }
+          const localData = localStorage.getItem(GUEST_STORAGE_KEY);
+          const localHistory = localStorage.getItem(GUEST_HISTORY_KEY);
           
-          // 3. Remove Loading Screen
+          if (localData) {
+              setCards(JSON.parse(localData));
+              if (localHistory) setHistoryList(JSON.parse(localHistory)); 
+              
+              setBoards([{ id: GUEST_BOARD_ID, title: "Guest Session", updatedAt: new Date().toISOString() }]);
+              setActiveBoardId(GUEST_BOARD_ID);
+              setLastSavedTime("Local");
+              lastSavedString.current = localData; 
+          } else {
+              setActiveBoardId(GUEST_BOARD_ID);
+          }
           setIsLoadingBoard(false);
-      }
-      setIsLoaded(true);
-    }
-    if (status !== "loading") init();
-  }, [status]);
-  
-  // Autosave Effect
+      }
+      setIsLoaded(true);
+    }
+    if (status !== "loading") init();
+  }, [status]);
+
+  // Autosave
   useEffect(() => {
     if (!isLoaded) return;
     const interval = setInterval(() => { 
@@ -457,7 +466,7 @@ export default function Board() {
     return () => clearInterval(interval);
   }, [cards, triggerSave, isLoaded]);
 
-  // ... (Prevent Unsaved Close, KeyDown, Viewport Handlers - Same as before)
+  // ... (Event Listeners & Utils same as before) ...
   useEffect(() => {
       const handleBeforeUnload = (e: BeforeUnloadEvent) => {
           if (!viewingFriend && (saveStatus === 'unsaved' || saveStatus === 'limit_reached')) {
@@ -488,7 +497,6 @@ export default function Board() {
   const handleLogin = () => signIn('google');
 
   const getBackgroundStyle = () => {
-    // ... (Same as before)
       if (boardBackground === 'dots') return { backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '20px 20px' };
       if (boardBackground === 'grid') return { backgroundImage: 'linear-gradient(#e5e7eb 1px, transparent 1px), linear-gradient(90deg, #e5e7eb 1px, transparent 1px)', backgroundSize: '40px 40px' };
       if (boardBackground.startsWith('#')) return { backgroundColor: boardBackground };
@@ -507,16 +515,11 @@ export default function Board() {
 
   function restore(point: HistoryPoint): void {
       if (!Array.isArray(point.content)) return;
-      
-      // 1. Update the UI to show the old board
       setCards(point.content as CardData[]);
-      
-      // 2. Mark as "Saved" visually (since it came from a save)
-      setSaveStatus("saved");
-      
-      // 3. IMPORTANT: Tell the autosave system "This is the baseline".
-      // This prevents the autosave interval from thinking "Oh, the cards changed! I must save!"
-      lastSavedString.current = JSON.stringify(point.content);      
+      setSaveStatus("saved"); 
+      lastSavedString.current = JSON.stringify(point.content);
+      // Removed triggerSave() for explicit history restore
+      showToast("Board history restored", "info");
   }
 
   return (
@@ -524,17 +527,15 @@ export default function Board() {
       
       <button onClick={() => setSidebarOpen(true)} className="absolute top-6 left-6 z-[60] p-2 bg-white/80 backdrop-blur border border-stone-200 rounded-lg shadow-sm text-stone-600 hover:bg-white hover:text-stone-900 hover:scale-105 transition-all"><Menu size={24} /></button>
 
-      {/* SIDEBAR ... (Mostly same, but make sure deleteBoard connects to new logic) */}
+      {/* SIDEBAR ... (Same) */}
       <div className={`absolute left-0 top-0 bottom-0 z-[70] flex transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`} onPointerDown={e => e.stopPropagation()}>
          <div className="w-72 h-full bg-white border-r border-stone-200 shadow-2xl flex flex-col overflow-hidden">
-             {/* ... Header ... */}
              <div className="p-4 border-b border-stone-100 flex items-center justify-between bg-stone-50">
                  <div className="flex items-center gap-2"><Layout size={16} className="text-stone-700"/><span className="text-sm font-bold text-stone-800">My Boards</span></div>
                  <button onClick={() => setSidebarOpen(false)} className="text-stone-400 hover:text-stone-600"><X size={18}/></button>
              </div>
              
              <div className="flex-1 overflow-y-auto p-3 space-y-1">
-                 {/* Boards List */}
                  {boards.map(b => (
                      <div key={b.id} onClick={() => loadBoard(b.id)} className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all border ${activeBoardId === b.id ? 'bg-stone-900 text-white border-stone-900 shadow-md' : 'bg-white border-transparent hover:bg-stone-100 text-stone-600'}`}>
                          {editingBoardId === b.id ? (
@@ -557,11 +558,30 @@ export default function Board() {
                      </div>
                  ))}
                  
-                 {/* ... Friends List (Same) ... */}
-                 {/* ... */}
+                 {/* ... Friends List ... */}
+                 <div className="mt-6 mb-2 flex items-center gap-2 px-1 text-stone-400"><Users size={12} /><span className="text-[10px] font-bold uppercase tracking-wider">Friends</span></div>
+                 {friends.length === 0 && <div className="px-3 py-2 text-xs text-stone-400 italic bg-stone-50 rounded-lg">No friends yet.</div>}
+                 {friends.map(friend => (
+                     <div key={friend.id}>
+                         <div onClick={() => { if(friend.id === 'ava-dev' || friend.id !== session?.user?.id) selectFriend(friend) }} className={`p-2 rounded-lg cursor-pointer hover:bg-stone-50 flex items-center gap-2 ${viewingFriend?.id === friend.id ? 'bg-blue-50 text-blue-800' : 'text-stone-600'}`}>
+                             <img src={friend.image || "/default-avatar.png"} className="w-6 h-6 rounded-full border border-stone-200"/>
+                             <span className="text-xs font-bold truncate">{friend.name}</span>
+                             {friend.role === 'DEV' && <span className="bg-blue-100 text-blue-700 text-[8px] px-1 rounded font-bold">DEV</span>}
+                         </div>
+                         {viewingFriend?.id === friend.id && (
+                             <div className="ml-8 mt-1 space-y-1 border-l-2 border-blue-100 pl-2">
+                                 {friendBoards.length === 0 && <span className="text-[10px] text-stone-400">No public boards</span>}
+                                 {friendBoards.map(fb => (
+                                     <button key={fb.id} onClick={() => loadFriendBoard(friend, fb.id)} className={`block w-full text-left text-[11px] py-1 px-1 rounded truncate ${activeBoardId === fb.id ? 'font-bold text-blue-600' : 'text-stone-500 hover:text-stone-800'}`}>
+                                         {fb.title}
+                                     </button>
+                                 ))}
+                             </div>
+                         )}
+                     </div>
+                 ))}
              </div>
              
-             {/* Sidebar Footer */}
              {status === 'authenticated' && (
                  <div className="p-3 border-t border-stone-100 bg-stone-50 flex flex-col gap-2">
                      <button onClick={() => createBoard("New Project")} className="w-full py-2 flex items-center justify-center gap-2 bg-white border border-stone-300 rounded-lg text-xs font-bold text-stone-600 hover:border-stone-900 hover:text-stone-900 transition-all shadow-sm"><Plus size={14}/> New Board</button>
@@ -572,7 +592,7 @@ export default function Board() {
          <div className="w-screen h-full bg-stone-900/20 backdrop-blur-sm cursor-pointer" onClick={() => setSidebarOpen(false)}></div>
       </div>
 
-      {/* NEW: LIMIT REACHED MODAL */}
+      {/* LIMIT MODAL ... (Same) */}
       <AnimatePresence>
         {showLimitModal && (
             <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
@@ -601,12 +621,30 @@ export default function Board() {
                         <button onClick={() => setShowSettings(false)}><X size={18} className="text-stone-400 hover:text-stone-700"/></button>
                     </div>
                     {/* ... Settings Content (Same) ... */}
+                    <div className="p-5 flex flex-col gap-4">
+                        <div className="flex flex-col gap-2">
+                            <span className="text-xs font-bold uppercase text-stone-400 tracking-wider">Background Style</span>
+                            <div className="grid grid-cols-5 gap-3">
+                                <button onClick={() => setBoardBackground("dots")} className={`w-10 h-10 rounded-full border bg-[radial-gradient(#000_1px,transparent_1px)] bg-[length:6px_6px] ${boardBackground === 'dots' ? 'ring-2 ring-stone-900 border-transparent' : 'border-stone-200'}`} title="Dots"></button>
+                                <button onClick={() => setBoardBackground("grid")} className={`w-10 h-10 rounded-full border bg-[linear-gradient(#000_1px,transparent_1px),linear-gradient(90deg,#000_1px,transparent_1px)] bg-[length:10px_10px] ${boardBackground === 'grid' ? 'ring-2 ring-stone-900 border-transparent' : 'border-stone-200'}`} title="Grid"></button>
+                                <button onClick={() => setBoardBackground("#fefce8")} className={`w-10 h-10 rounded-full border bg-yellow-50 ${boardBackground === '#fefce8' ? 'ring-2 ring-stone-900 border-transparent' : 'border-stone-200'}`} title="Yellow"></button>
+                                <button onClick={() => setBoardBackground("#ecfeff")} className={`w-10 h-10 rounded-full border bg-cyan-50 ${boardBackground === '#ecfeff' ? 'ring-2 ring-stone-900 border-transparent' : 'border-stone-200'}`} title="Cyan"></button>
+                                <div className="relative w-10 h-10 rounded-full border border-stone-200 overflow-hidden flex items-center justify-center hover:border-stone-400 transition-colors">
+                                    <input type="color" onChange={(e) => setBoardBackground(e.target.value)} className="absolute inset-0 w-[150%] h-[150%] -left-[25%] -top-[25%] p-0 m-0 cursor-pointer border-none" title="Custom Color"/>
+                                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/20"><Plus size={14} className="text-stone-500"/></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between p-2 bg-stone-50 rounded-lg">
+                            <div className="flex items-center gap-2"><Shuffle size={14} className="text-stone-500" /><span className="text-xs font-bold text-stone-700">Random Rotation</span></div>
+                            <input type="checkbox" checked={randomRotation} onChange={(e) => setRandomRotation(e.target.checked)} className="accent-stone-900" />
+                        </div>
+                    </div>
                 </motion.div>
             </div>
         )}
       </AnimatePresence>
 
-      {/* LOADING OVERLAY ... (Same) */}
       <AnimatePresence>
         {isLoadingBoard && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-[40] bg-white/60 backdrop-blur-md flex flex-col items-center justify-center gap-4">
@@ -616,7 +654,6 @@ export default function Board() {
         )}
       </AnimatePresence>
 
-      {/* Canvas Layer ... (Same) */}
       <div className="absolute inset-0 pointer-events-none origin-top-left -z-10 transition-colors duration-500" style={{ ...getBackgroundStyle(), transform: `translate(${viewState.x}px, ${viewState.y}px) scale(${viewState.scale})`, opacity: boardBackground.startsWith('url') ? 1 : (boardBackground.startsWith('#') ? 1 : 0.4) }} />
       <motion.div className="absolute top-0 left-0 w-full h-full origin-top-left" style={{ x: viewState.x, y: viewState.y, scale: viewState.scale }} transition={{ type: "tween", ease: "linear", duration: 0 }}>
           {cards.filter(c => c && c.content).map((card) => (
@@ -631,7 +668,23 @@ export default function Board() {
           ))}
       </motion.div>
 
-      {/* GUEST BANNER ... (Same) */}
+      {/* TOAST NOTIFICATION COMPONENT */}
+      <AnimatePresence>
+        {toast && (
+            <motion.div 
+                initial={{ opacity: 0, y: 50, scale: 0.9 }} 
+                animate={{ opacity: 1, y: 0, scale: 1 }} 
+                exit={{ opacity: 0, y: 20, scale: 0.9 }} 
+                className="fixed bottom-6 right-1/2 translate-x-1/2 md:right-6 md:translate-x-0 z-[100] flex items-center gap-3 px-4 py-3 bg-white border border-stone-200 rounded-xl shadow-2xl"
+            >
+                {toast.type === 'success' && <div className="p-1 rounded-full bg-green-100 text-green-600"><CheckCircle size={16}/></div>}
+                {toast.type === 'error' && <div className="p-1 rounded-full bg-red-100 text-red-600"><AlertCircle size={16}/></div>}
+                {toast.type === 'info' && <div className="p-1 rounded-full bg-blue-100 text-blue-600"><Info size={16}/></div>}
+                <span className={`text-sm font-bold ${toast.type === 'error' ? 'text-red-700' : 'text-stone-800'}`}>{toast.message}</span>
+            </motion.div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {status === "unauthenticated" && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-stone-900/90 text-white px-4 py-2 rounded-full shadow-lg backdrop-blur flex items-center gap-3">
@@ -642,8 +695,6 @@ export default function Board() {
         )}
       </AnimatePresence>
 
-      {/* ZOOM CONTROLS ... (Same) */}
-      {/* ... */}
       <div className="absolute bottom-6 left-6 flex gap-2 z-50">
         <div className="bg-white border border-stone-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
             <button onClick={zoomIn} className="p-2 hover:bg-stone-50 text-stone-600 border-b border-stone-100"><Plus size={16}/></button>
@@ -653,10 +704,8 @@ export default function Board() {
       </div>
 
       <OnboardingModal />
-      
-      {/* ADD MENU ... (Same) */}
+
       <div className="absolute bottom-6 right-6 flex flex-col items-end gap-2 z-50">
-           {/* ... Add Menu Content ... */}
            <AnimatePresence>
                {showAddMenu && contextMenuPos && (
                    <div className="fixed z-[100]" style={{ top: contextMenuPos.y, left: contextMenuPos.x }}>
@@ -685,7 +734,6 @@ export default function Board() {
            )}
        </div>
 
-      {/* TOP BAR */}
       <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-start z-50 pointer-events-none select-none pl-[80px]">
         <div className="pointer-events-auto flex flex-col items-start gap-1">
             <div className="flex items-center gap-2">
@@ -695,7 +743,6 @@ export default function Board() {
             
             <div className="relative flex gap-1 mt-1">
                 {!viewingFriend && (
-                    /* ISSUE 3 FIX: Updated Colors here (text-stone-900, bg-white/90) */
                     <button onClick={triggerSave} className={`flex items-center gap-2 text-xs transition-all bg-white/90 px-2 py-1.5 rounded-l-md border border-stone-200/50 hover:bg-white hover:border-stone-300 ${status === 'unauthenticated' ? 'opacity-70' : ''}`}>
                         {saveStatus === 'saving' && <Loader2 size={12} className="animate-spin text-blue-500"/>}
                         {saveStatus === 'saved' && <Cloud size={12} className="text-blue-500"/>}
@@ -707,12 +754,10 @@ export default function Board() {
                 {!viewingFriend && (
                     <button onClick={() => setShowHistory(!showHistory)} className="bg-white/90 px-1.5 py-1.5 rounded-r-md border border-l-0 border-stone-200/50 hover:bg-white hover:border-stone-300 text-stone-500 hover:text-stone-800"><History size={12} /></button>
                 )}
-                {/* ... History Dropdown (Same) ... */}
                 {showHistory && !viewingFriend && (
                     <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-stone-100 overflow-hidden flex flex-col z-[60]">
                         <div className="px-3 py-2 bg-stone-50 border-b border-stone-100 text-[10px] font-bold uppercase tracking-wider text-stone-500 flex justify-between"><span>History</span><span className="text-stone-400">{historyList.length}/10</span></div>
                         <div className="max-h-64 overflow-y-auto">
-                            {/* NOTE: History works for guest now too! */}
                             {historyList.map((point) => (
                                 <button key={point.id} onClick={() => restore(point)} className="w-full text-left px-3 py-2.5 text-xs text-stone-600 hover:bg-blue-50 hover:text-blue-600 flex justify-between border-b border-stone-50 last:border-0 group">
                                     <span className="font-medium group-hover:translate-x-1 transition-transform">{formatDate(point.createdAt)}</span><span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded-full">{Array.isArray(point.content) ? point.content.length : 0} items</span>

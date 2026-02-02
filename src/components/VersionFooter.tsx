@@ -7,6 +7,21 @@ import { X, GitCommit, ScrollText } from "lucide-react";
 // --- CHANGELOG DATA ---
 const CHANGELOG = [
   {
+    version: "v0.9.1",
+    date: "Feb 02, 2026",
+    title: "Guest Persistence, Visual Feedback & Card Specialization",
+    description: "A polish update focusing on Guest UX, type safety, and visual feedback. We fixed critical guest history bugs and introduced a system-wide notification layer.",
+    features: [
+      "Toast Notification System: Integrated a custom toast system to provide explicit success/error feedback for board actions.",
+      "Guest History Fix: Guest users now correctly generate and persist history snapshots in local storage.",
+      "Visual Loading Feedback: Added 'Artificial Delay' for guest actions (Save/Load) to provide visual confidence that work is being processed.",
+      "Text elements now behave like true overlays. no borders, no backgrounds, and no flip mechanics.",
+      "Smart Context Menus: The 'Edit' menu now adapts to the card type (e.g., hiding 'Backside' tabs for Text elements).",
+      "Card Rendering Logic: Fixed specific rendering for YouTube (iframe) and Shape (border-radius) types.",
+      "Safe History Restore: Restoring a history point no longer triggers an immediate auto-save loop.",
+    ]
+  },
+  {
     version: "v0.9.0",
     date: "Jan 20, 2026",
     title: "Multi-Boards, Social Viewing & Creative Expansion",

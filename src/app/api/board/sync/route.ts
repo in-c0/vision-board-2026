@@ -13,19 +13,18 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const boardId = searchParams.get("id");
-  // FIX: Allow fetching specific user's boards (for Friend View)
   const targetUserId = searchParams.get("userId") || session.user.id;
 
   if (boardId) {
     const board = await prisma.board.findFirst({
-      where: { id: boardId, userId: targetUserId }, // Match board to the target user
+      where: { id: boardId, userId: targetUserId },
       include: { history: { orderBy: { createdAt: 'desc' }, take: 10 } }
     });
     return NextResponse.json(board || { error: "Not found" });
   } else {
     const boards = await prisma.board.findMany({
-      where: { userId: targetUserId }, // FIX: Filter by target user, not always session user
-      select: { id: true, title: true, updatedAt: true, background: true, randomRotation: true }, // Added background/rotation
+      where: { userId: targetUserId },
+      select: { id: true, title: true, updatedAt: true, background: true, randomRotation: true },
       orderBy: { updatedAt: 'desc' }
     });
     return NextResponse.json({ boards });
@@ -50,6 +49,8 @@ export async function POST(req: Request) {
         background: background || "dots",
         randomRotation: randomRotation !== undefined ? randomRotation : true,
         content: cards || [],
+        // Prisma usually handles updatedAt automatically, but setting it explicitly is safer
+        updatedAt: new Date(), 
       }
     });
     return NextResponse.json(newBoard);
@@ -58,17 +59,27 @@ export async function POST(req: Request) {
   if (action === "update" && boardId) {
     if (getSizeInMB(cards) > 100) return NextResponse.json({ error: "SIZE_LIMIT_EXCEEDED" }, { status: 413 });
 
+    // SAFETY GUARD: Prevent overwriting a board with empty data if it looks like an error
+    // If cards is an empty array, we proceed only if the user explicitly deleted everything (handled by UI), 
+    // but this prevents "undefined" or "null" wipes.
+    if (!Array.isArray(cards)) return NextResponse.json({ error: "INVALID_CONTENT" }, { status: 400 });
+
+    const now = new Date(); // Capture exact time of update
+
     const board = await prisma.board.update({
       where: { id: boardId, userId: session.user.id },
       data: { 
-          content: cards !== undefined ? cards : undefined,
+          content: cards,
           background: background !== undefined ? background : undefined,
-          randomRotation: randomRotation !== undefined ? randomRotation : undefined
+          randomRotation: randomRotation !== undefined ? randomRotation : undefined,
+          updatedAt: now // <--- FIX 1: Explicitly set the date
       },
     });
 
-    // History Snapshot (Only if content changed)
-    if (cards) {
+    // History Snapshot
+    // FIX 2: Only create history if there is actual content to save
+    // This prevents filling the history buffer with "empty" states
+    if (cards && cards.length > 0) {
         await prisma.boardHistory.create({ data: { boardId, content: cards } });
         const historyCount = await prisma.boardHistory.count({ where: { boardId } });
         if (historyCount > 10) {
@@ -84,7 +95,8 @@ export async function POST(req: Request) {
        select: { id: true, createdAt: true, content: true }
     });
 
-    return NextResponse.json({ updatedAt: board.updatedAt, history });
+    // FIX 3: Return the 'now' variable to ensure frontend gets a valid date object
+    return NextResponse.json({ updatedAt: now, history });
   }
   
   if (action === "rename" && boardId) {

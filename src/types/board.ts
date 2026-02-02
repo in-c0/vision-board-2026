@@ -13,7 +13,7 @@ export interface CardStyle {
 
 export interface CardData {
   id: string;
-  type: 'text' | 'image';
+  type: 'text' | 'image' | 'youtube' | 'shape';
   x: number;
   y: number;
   width: number;
@@ -22,22 +22,27 @@ export interface CardData {
   isFlipped: boolean;
   content: {
     frontText?: string;
-    frontUrl?: string;
-    frontVideoUrl?: string; // Support for MP4s
-    style?: {
+    frontUrl?: string;      // For uploaded images/videos
+    frontVideoUrl?: string; // For uploaded video files
+    
+    youtubeUrl?: string;    // For YouTube Embeds
+    shapeType?: 'square' | 'circle'; // For Shapes
+    
+    style: {
       opacity: number;
       fontSize: number;
       fontFamily: string;
       fontWeight: string;
       fontStyle: string;
       textColor: string;
+      backgroundColor?: string; 
+      textAlign?: string;
+      verticalAlign?: string;
     };
     backReflection: {
-      identity: string;     // Legacy field (kept for safety)
-      practice: string;     // Legacy field (kept for safety)
-      
-      // New Template System Fields
-      templateId?: string; 
+      templateId?: string;
+      identity?: string; 
+      practice?: string;
       q1?: string;
       q2?: string;
       q3?: string;

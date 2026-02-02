@@ -285,46 +285,46 @@ export default function Board() {
   const findSmartPosition = () => { if (typeof window === 'undefined') return { x: 0, y: 0 }; const cx = (window.innerWidth / 2 - view.x) / view.scale; const cy = (window.innerHeight / 2 - view.y) / view.scale; return { x: cx - 140 + (Math.random() - 0.5) * 100, y: cy - 190 + (Math.random() - 0.5) * 100 }; };
 
   const addCardOfType = (type: 'text' | 'card' | 'youtube' | 'shape') => {
-    let x, y;
-    if (contextMenuPos) {
-        x = (contextMenuPos.x - viewState.x) / viewState.scale;
-        y = (contextMenuPos.y - viewState.y) / viewState.scale;
-    } else {
-        const pos = findSmartPosition();
-        x = pos.x; y = pos.y;
-    }
+    let x, y;
+    if (contextMenuPos) {
+        x = (contextMenuPos.x - viewState.x) / viewState.scale;
+        y = (contextMenuPos.y - viewState.y) / viewState.scale;
+    } else {
+        const pos = findSmartPosition();
+        x = pos.x; y = pos.y;
+    }
 
-    const defaults = {
-        text: { text: "", bg: "transparent", type: 'text' },
-        card: { text: "", bg: "#ffffff", type: 'image' },
-        youtube: { text: "", bg: "#000000", type: 'youtube' },
-        shape: { text: "", bg: "#e5e7eb", type: 'shape' }
-    };
-    const config = defaults[type];
-    const rot = randomRotation ? (Math.random() - 0.5) * 16 : 0;
+    const defaults = {
+        text: { text: "Right Click to Edit", bg: "transparent", type: 'text' },
+        card: { text: "", bg: "#ffffff", type: 'image' },
+        youtube: { text: "", bg: "#000000", type: 'youtube' },
+        shape: { text: "", bg: "#e5e7eb", type: 'shape' }
+    };
+    const config = defaults[type];
+    const rot = randomRotation ? (Math.random() - 0.5) * 16 : 0;
 
-    const newCard: CardData = {
-        id: Math.random().toString(36).substr(2, 9),
-        type: config.type as any, 
-        x, y, width: 280, height: 380, rotation: rot,
-        content: { 
-            frontText: config.text, 
-            style: { 
-                opacity: 1, fontSize: 32, fontFamily: 'font-serif', fontWeight: 'normal', fontStyle: 'italic', textColor: '#292524',
-                backgroundColor: config.bg,
-                textAlign: 'center', verticalAlign: 'center'
-            },
-            shapeType: type === 'shape' ? 'circle' : undefined,
-            youtubeUrl: "" 
-        } as any,
-        isFlipped: false
-    };
-    setCards([...cards, newCard]);
-    setSelectedId(newCard.id);
-    setSaveStatus("unsaved"); // Default to unsaved
-    setShowAddMenu(false);
-    setContextMenuPos(null);
-  };
+    const newCard: CardData = {
+        id: Math.random().toString(36).substr(2, 9),
+        type: config.type as any, 
+        x, y, width: 280, height: 380, rotation: rot,
+        content: { 
+            frontText: config.text, 
+            style: { 
+                opacity: 1, fontSize: 32, fontFamily: 'font-serif', fontWeight: 'normal', fontStyle: 'italic', textColor: '#292524',
+                backgroundColor: config.bg,
+                textAlign: 'center', verticalAlign: 'center'
+            },
+            shapeType: type === 'shape' ? 'circle' : undefined,
+            youtubeUrl: "" 
+        } as any,
+        isFlipped: false
+    };
+    setCards([...cards, newCard]);
+    setSelectedId(newCard.id);
+    setSaveStatus("unsaved"); 
+    setShowAddMenu(false);
+    setContextMenuPos(null);
+  };
 
 
 // ... imports and state remain the same
